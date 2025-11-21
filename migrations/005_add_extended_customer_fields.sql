@@ -3,26 +3,26 @@
 -- Purpose: Support comprehensive customer information capture
 
 -- ===== UP =====
--- Add new customer information columns
+-- Add new customer information columns (only if they don't exist)
 ALTER TABLE loans
-  ADD COLUMN first_name VARCHAR(128),
-  ADD COLUMN last_name VARCHAR(128),
-  ADD COLUMN email VARCHAR(255),
-  ADD COLUMN home_phone VARCHAR(64),
-  ADD COLUMN mobile_phone VARCHAR(64),
-  ADD COLUMN birthdate DATE,
-  ADD COLUMN referral VARCHAR(128),
-  ADD COLUMN identification_info TEXT,
-  ADD COLUMN street_address TEXT,
-  ADD COLUMN city VARCHAR(128),
-  ADD COLUMN state VARCHAR(64),
-  ADD COLUMN zipcode VARCHAR(32);
+  ADD COLUMN IF NOT EXISTS first_name VARCHAR(128),
+  ADD COLUMN IF NOT EXISTS last_name VARCHAR(128),
+  ADD COLUMN IF NOT EXISTS email VARCHAR(255),
+  ADD COLUMN IF NOT EXISTS home_phone VARCHAR(64),
+  ADD COLUMN IF NOT EXISTS mobile_phone VARCHAR(64),
+  ADD COLUMN IF NOT EXISTS birthdate DATE,
+  ADD COLUMN IF NOT EXISTS referral VARCHAR(128),
+  ADD COLUMN IF NOT EXISTS identification_info TEXT,
+  ADD COLUMN IF NOT EXISTS street_address TEXT,
+  ADD COLUMN IF NOT EXISTS city VARCHAR(128),
+  ADD COLUMN IF NOT EXISTS state VARCHAR(64),
+  ADD COLUMN IF NOT EXISTS zipcode VARCHAR(32);
 
 -- Create indexes on frequently searched fields for performance optimization
-CREATE INDEX idx_loans_first_name ON loans(first_name);
-CREATE INDEX idx_loans_last_name ON loans(last_name);
-CREATE INDEX idx_loans_email ON loans(email);
-CREATE INDEX idx_loans_mobile_phone ON loans(mobile_phone);
+CREATE INDEX IF NOT EXISTS idx_loans_first_name ON loans(first_name);
+CREATE INDEX IF NOT EXISTS idx_loans_last_name ON loans(last_name);
+CREATE INDEX IF NOT EXISTS idx_loans_email ON loans(email);
+CREATE INDEX IF NOT EXISTS idx_loans_mobile_phone ON loans(mobile_phone);
 
 -- Safe data migration: Split legacy customer_name into first_name and last_name
 -- This preserves existing customer_name data while populating new fields

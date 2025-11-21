@@ -24,19 +24,6 @@ CREATE INDEX IF NOT EXISTS idx_loans_mobile_phone ON loans(mobile_phone);
 
 -- Migrate existing customer_name data to first_name and last_name
 -- Strategy: Split on first space; if no space, put all in last_name
-UPDATE loans
-SET 
-  first_name = CASE 
-    WHEN customer_name LIKE '% %' THEN SUBSTRING_INDEX(customer_name, ' ', 1)
-    ELSE customer_name
-  END,
-  last_name = CASE 
-    WHEN customer_name LIKE '% %' THEN SUBSTRING_INDEX(customer_name, ' ', -1)
-    ELSE ''
-  END
-WHERE first_name IS NULL AND customer_name IS NOT NULL;
-
--- Log migration summary (if using PostgreSQL, adjust SUBSTRING function)
 -- For PostgreSQL, use: SPLIT_PART(customer_name, ' ', 1) and SPLIT_PART with position
 UPDATE loans
 SET 
