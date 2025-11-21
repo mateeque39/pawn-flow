@@ -1,44 +1,58 @@
 # PawnFlow Backend
 
-A comprehensive pawn shop management system backend built with Node.js, Express, and PostgreSQL.
+A comprehensive pawn shop management system backend built with Node.js, Express, and PostgreSQL. Complete support for extended customer information fields with automatic interest calculation, flexible search, and shift management.
 
 ## Features
 
 ✅ **Loan Management**
-- Create loans with comprehensive customer information
-- Search loans by multiple criteria (name, email, phone, etc.)
+- Create loans with extended customer fields (name, email, phone, birthdate, address, etc.)
+- Server-side interest amount and total payable amount calculation
+- Search loans by multiple criteria (firstName, lastName, email, phone, city, state, zipcode)
 - Add money to existing loans with automatic recalculation
-- Track collateral and customer notes
+- Support for transaction numbers and customer notes
+
+✅ **Customer Information**
+- 12 new customer fields including email, phone, birthdate, address components
+- Flexible input: accepts both camelCase and snake_case in requests
+- All responses in consistent snake_case format
+- Safe database migration from legacy customer_name field
 
 ✅ **Payment Tracking**
-- Record customer payments
-- Track payment history
-- Automatic loan status updates
-- Support for multiple payment methods
+- Record customer payments with method tracking
+- Track payment history by loan
+- Automatic loan status updates based on payments
+- Support for multiple payment methods (cash, card, check, etc.)
 
 ✅ **Loan Lifecycle**
 - Active loans with automatic due date tracking
 - Redeem loans (return collateral to customer)
 - Forfeit loans (keep collateral)
-- Overdue loan management with automatic status updates
+- Automatic overdue marking when interest not paid
 
 ✅ **Shift Management**
-- Start/end shifts with cash tracking
-- Automatic cash balance verification
-- Real-time shift summaries
+- Start/end shifts with cash balance verification
+- Automatic cash reconciliation (Opening + Payments - New Loans)
+- Real-time shift summaries by user
 - Detailed transaction reports per shift
 
 ✅ **User Authentication**
-- JWT-based authentication
-- Role-based access control
-- Secure password storage with bcrypt
+- JWT-based authentication with 1-hour expiration
+- Secure password storage with bcryptjs
+- User role management
+
+✅ **Data Validation**
+- Email format validation
+- Phone number format validation (7-20 characters)
+- Loan amount and term validation
+- ISO 8601 date validation
 
 ## Tech Stack
 
 - **Runtime**: Node.js v14+
 - **Framework**: Express.js v5.1
 - **Database**: PostgreSQL v12+
-- **Authentication**: JWT, bcryptjs
+- **ORM**: Raw SQL with pg connection pooling
+- **Authentication**: JWT (jsonwebtoken), bcryptjs
 - **Utilities**: node-cron (scheduled tasks), CORS
 
 ## Prerequisites
@@ -46,7 +60,7 @@ A comprehensive pawn shop management system backend built with Node.js, Express,
 - Node.js v14 or higher
 - PostgreSQL v12 or higher
 - npm or yarn
-- Git
+- Git (optional, for cloning)
 
 ## Installation
 

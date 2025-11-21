@@ -78,7 +78,7 @@ function snakeToCamel(str) {
 
 /**
  * Map request body (camelCase or snake_case) to database fields (snake_case)
- * Handles both naming conventions
+ * Handles both naming conventions for all customer fields
  * @param {object} body - Request body
  * @returns {object} - Mapped fields
  */
@@ -89,9 +89,12 @@ function mapRequestToDb(body) {
     'homePhone': 'home_phone',
     'mobilePhone': 'mobile_phone',
     'birthDate': 'birthdate',
+    'birthdate': 'birthdate',
     'identificationInfo': 'identification_info',
     'loanAmount': 'loan_amount',
     'interestRate': 'interest_rate',
+    'interestAmount': 'interest_amount',
+    'totalPayableAmount': 'total_payable_amount',
     'loanIssuedDate': 'loan_issued_date',
     'loanTerm': 'loan_term',
     'customerNumber': 'customer_number',
@@ -99,18 +102,75 @@ function mapRequestToDb(body) {
     'collateralDescription': 'collateral_description',
     'customerNote': 'customer_note',
     'transactionNumber': 'transaction_number',
+    'streetAddress': 'street_address',
+    'dueDate': 'due_date',
     'userId': 'user_id',
+    'createdByUserId': 'created_by_user_id',
+    'createdByUsername': 'created_by_username',
   };
 
   const mapped = {};
 
   for (const [key, value] of Object.entries(body)) {
-    // Check if it's camelCase
-    const snakeKey = fieldMappings[key] || camelToSnake(key);
-    mapped[snakeKey] = value;
+    // Check if it's a known camelCase field
+    const snakeKey = fieldMappings[key] || (key.includes('_') ? key : camelToSnake(key));
+    if (value !== undefined && value !== null) {
+      mapped[snakeKey] = value;
+    }
   }
 
   return mapped;
+}
+
+/**
+ * Validate all extended customer fields
+ * @param {object} fields - Mapped fields from database
+ * @returns {object} - { valid: boolean, errors?: string[] }
+ */
+function validateCustomerFields(fields) {
+  const errors = [];
+
+  // Validate email if provided
+  if (fields.email && !isValidEmail(fields.email)) {
+    errors.push('email must be a valid email address');
+  }
+
+  // Validate phone fields if provided
+  if (fields.home_phone && !isValidPhoneFormat(fields.home_phone)) {
+    errors.push('home_phone must be a valid phone format (7-20 characters)');
+  }
+
+  if (fields.mobile_phone && !isValidPhoneFormat(fields.mobile_phone)) {
+    errors.push('mobile_phone must be a valid phone format (7-20 characters)');
+  }
+
+  // Validate birthdate if provided (should be valid ISO date)
+  if (fields.birthdate) {
+    const dateObj = new Date(fields.birthdate);
+    if (isNaN(dateObj.getTime())) {
+      errors.push('birthdate must be a valid ISO date (YYYY-MM-DD)');
+    }
+  }
+
+  // Validate dates if provided
+  if (fields.loan_issued_date) {
+    const dateObj = new Date(fields.loan_issued_date);
+    if (isNaN(dateObj.getTime())) {
+      errors.push('loan_issued_date must be a valid ISO date (YYYY-MM-DD)');
+    }
+  }
+
+  if (fields.due_date) {
+    const dateObj = new Date(fields.due_date);
+    if (isNaN(dateObj.getTime())) {
+      errors.push('due_date must be a valid ISO date (YYYY-MM-DD)');
+    }
+  }
+
+  return {
+    valid: errors.length === 0,
+    errors: errors.length > 0 ? errors : undefined,
+  };
 }
 
 /**
@@ -145,6 +205,7 @@ module.exports = {
   isValidPhoneFormat,
   validateNames,
   validateLoanAmounts,
+  validateCustomerFields,
   camelToSnake,
   snakeToCamel,
   mapRequestToDb,

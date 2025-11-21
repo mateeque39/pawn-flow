@@ -1,7 +1,7 @@
 # PawnFlow Backend API Documentation
 
 ## Overview
-PawnFlow is a comprehensive pawn shop management system backend built with Node.js, Express, and PostgreSQL.
+PawnFlow is a comprehensive pawn shop management system backend built with Node.js, Express, and PostgreSQL. This document covers all API endpoints with complete request/response examples including the extended customer fields implementation.
 
 ## Base URL
 ```
@@ -11,9 +11,13 @@ http://localhost:5000
 ## Table of Contents
 - [Authentication](#authentication)
 - [Loans](#loans)
+  - [Create Loan](#create-loan)
+  - [Search Loans](#search-loans)
+  - [Add Money to Loan](#add-money-to-loan)
 - [Payments](#payments)
 - [Shift Management](#shift-management)
 - [Error Handling](#error-handling)
+- [Database Schema](#database-schema)
 
 ---
 
@@ -72,83 +76,209 @@ Authenticate user and get JWT token.
 ### Create Loan
 **POST** `/create-loan`
 
-Create a new loan with comprehensive customer information.
+Create a new loan with comprehensive customer information and automatic interest calculation.
 
-**Request:**
+**Request (camelCase):**
 ```json
 {
   "firstName": "Jane",
   "lastName": "Doe",
-  "email": "jane@example.com",
-  "homePhone": "555-1234",
-  "mobilePhone": "555-5678",
-  "birthdate": "1980-01-15",
+  "email": "jane.doe@example.com",
+  "homePhone": "555-1111",
+  "mobilePhone": "555-2222",
+  "birthdate": "1980-01-01",
   "referral": "friend",
-  "identificationInfo": "Passport: ABC123456",
-  "address": "123 Main Street, City, State 12345",
-  "customerNumber": "CUST001",
-  "loanAmount": 500,
+  "identificationInfo": "Passport 12345",
+  "streetAddress": "123 Main St Apt 4",
+  "city": "Boston",
+  "state": "MA",
+  "zipcode": "02111",
+  "loanAmount": 100,
   "interestRate": 10,
   "loanTerm": 30,
-  "collateralDescription": "Gold ring, 18k",
-  "customerNote": "Regular customer",
   "loanIssuedDate": "2025-11-21",
-  "userId": 1
+  "dueDate": "2025-12-21",
+  "transactionNumber": "987654321",
+  "collateralDescription": "Gold watch",
+  "customerNote": "VIP customer",
+  "createdByUserId": 1,
+  "createdByUsername": "admin"
 }
 ```
 
-**Notes:**
-- `firstName` and `lastName` are required
-- `email` must be valid if provided
-- `homePhone` and `mobilePhone` must match phone format if provided
-- `loanAmount` and `interestRate` must be positive numbers
-- `loanTerm` must be a non-negative integer (days)
-- All other fields are optional
-- Request accepts both camelCase and snake_case field names
+**Request (snake_case - also accepted):**
+```json
+{
+  "first_name": "Jane",
+  "last_name": "Doe",
+  "email": "jane.doe@example.com",
+  "mobile_phone": "555-2222",
+  "street_address": "123 Main St",
+  "city": "Boston",
+  "loan_amount": 100,
+  "interest_rate": 10,
+  "loan_term": 30
+}
+```
+
+**Validation Rules:**
+| Field | Required | Type | Rules |
+|-------|----------|------|-------|
+| first_name | Yes | String | Non-empty |
+| last_name | Yes | String | Non-empty |
+| email | No | String | Valid email format if provided |
+| home_phone | No | String | Phone format (7-20 chars) if provided |
+| mobile_phone | No | String | Phone format (7-20 chars) if provided |
+| birthdate | No | Date | ISO 8601 format (YYYY-MM-DD) if provided |
+| street_address | No | String | Free text |
+| city | No | String | Free text |
+| state | No | String | Free text |
+| zipcode | No | String | Free text |
+| loan_amount | Yes | Number | Must be > 0 |
+| interest_rate | Yes | Number | Must be >= 0 |
+| loan_term | Yes | Integer | Must be >= 0 (in days) |
 
 **Response:** `201 Created`
 ```json
 {
-  "message": "Loan created successfully",
   "loan": {
-    "id": 123,
+    "id": 1,
     "first_name": "Jane",
     "last_name": "Doe",
-    "email": "jane@example.com",
-    "home_phone": "555-1234",
-    "mobile_phone": "555-5678",
-    "birthdate": "1980-01-15",
+    "email": "jane.doe@example.com",
+    "home_phone": "555-1111",
+    "mobile_phone": "555-2222",
+    "birthdate": "1980-01-01",
     "referral": "friend",
-    "identification_info": "Passport: ABC123456",
-    "address": "123 Main Street, City, State 12345",
-    "customer_number": "CUST001",
-    "customer_name": "Jane Doe",
-    "loan_amount": 500,
+    "identification_info": "Passport 12345",
+    "street_address": "123 Main St Apt 4",
+    "city": "Boston",
+    "state": "MA",
+    "zipcode": "02111",
+    "customer_number": null,
+    "loan_amount": 100,
     "interest_rate": 10,
-    "interest_amount": 50,
-    "total_payable_amount": 550,
+    "interest_amount": 10,
+    "total_payable_amount": 110,
+    "collateral_description": "Gold watch",
+    "customer_note": "VIP customer",
+    "transaction_number": "987654321",
     "loan_issued_date": "2025-11-21",
     "loan_term": 30,
     "due_date": "2025-12-21",
-    "transaction_number": "987654321",
     "status": "active",
-    "remaining_balance": 550,
+    "remaining_balance": 110,
     "created_by": 1,
-    "created_at": "2025-11-21T10:30:00.000Z"
+    "created_by_user_id": 1,
+    "created_by_username": "admin",
+    "customer_name": "Jane Doe"
   }
 }
 ```
 
+**Key Features:**
+- Accepts both `camelCase` and `snake_case` input fields
+- Automatic calculation: `interest_amount = (loan_amount * interest_rate) / 100`
+- Automatic calculation: `total_payable_amount = loan_amount + interest_amount`
+- All response fields returned in `snake_case`
+- `customer_name` field automatically populated with "FirstName LastName" for backward compatibility
+
 ### Search Loans
 **GET** `/search-loan`
 
-Search for loans by customer information.
+Search for loans by customer information with flexible query parameters.
 
-**Query Parameters:**
+**Query Parameters (all optional, at least one required):**
 ```
-?firstName=Jane              # Search by first name (partial match)
-?lastName=Doe               # Search by last name (partial match)
-?email=jane@example.com     # Search by email (partial match)
+?firstName=Jane              # Search by first name (partial/ILIKE match)
+?lastName=Doe               # Search by last name (partial/ILIKE match)
+?email=jane@example.com     # Search by email (partial/ILIKE match)
+?mobilePhone=555            # Search by mobile phone (partial/ILIKE match)
+?homePhone=555              # Search by home phone (partial/ILIKE match)
+?city=Boston                # Search by city (partial/ILIKE match)
+?state=MA                   # Search by state (partial/ILIKE match)
+?zipcode=02111              # Search by zipcode (partial/ILIKE match)
+?customerNumber=CUST001     # Search by customer number (partial/ILIKE match)
+?transactionNumber=123456   # Search by transaction (exact match)
+?customerName=Jane          # Search by legacy customer_name (partial/ILIKE match)
+```
+
+**Example Requests:**
+```
+GET /search-loan?firstName=Jane&lastName=Doe
+GET /search-loan?email=jane@example.com
+GET /search-loan?mobilePhone=555
+GET /search-loan?city=Boston&state=MA
+```
+
+**Response:** `200 OK` (if found)
+```json
+[
+  {
+    "id": 1,
+    "first_name": "Jane",
+    "last_name": "Doe",
+    "email": "jane.doe@example.com",
+    "mobile_phone": "555-2222",
+    "street_address": "123 Main St Apt 4",
+    "city": "Boston",
+    "state": "MA",
+    "zipcode": "02111",
+    "loan_amount": 100,
+    "interest_rate": 10,
+    "interest_amount": 10,
+    "total_payable_amount": 110,
+    "loan_issued_date": "2025-11-21",
+    "due_date": "2025-12-21",
+    "status": "active",
+    "remaining_balance": 110,
+    "transaction_number": "987654321"
+  }
+]
+```
+
+**Response:** `404 Not Found`
+```json
+{
+  "message": "No loans found"
+}
+```
+
+**Response:** `400 Bad Request` (no search criteria)
+```json
+{
+  "message": "At least one search criteria is required"
+}
+```
+
+### Add Money to Loan
+**POST** `/add-money`
+
+Add additional money to an existing loan.
+
+**Request:**
+```json
+{
+  "loanId": 1,
+  "amount": 50
+}
+```
+
+**Response:** `200 OK`
+```json
+{
+  "message": "Money added successfully",
+  "loan": {
+    "id": 1,
+    "first_name": "Jane",
+    "last_name": "Doe",
+    "loan_amount": 150,
+    "total_payable_amount": 165,
+    "remaining_balance": 165,
+    "status": "active"
+  }
+}
+```
 ?mobilePhone=555-5678       # Search by mobile phone (partial match)
 ?customerNumber=CUST001     # Search by customer number (exact match)
 ?transactionNumber=123456   # Search by transaction number (exact match)

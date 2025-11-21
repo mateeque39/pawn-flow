@@ -291,7 +291,7 @@ app.post('/create-loan', async (req, res) => {
     // Map request body (handles both camelCase and snake_case)
     const mapped = validators.mapRequestToDb(req.body);
 
-    // Extract fields
+    // Extract all customer and loan fields
     const {
       first_name,
       last_name,
@@ -301,16 +301,25 @@ app.post('/create-loan', async (req, res) => {
       birthdate,
       referral,
       identification_info,
-      address,
+      street_address,
+      city,
+      state,
+      zipcode,
       customer_number,
       loan_amount: loanAmount,
       interest_rate: interestRate,
+      interest_amount: inputInterestAmount,
+      total_payable_amount: inputTotalPayableAmount,
       collateral_description,
       customer_note,
       loan_issued_date: loanIssuedDate,
+      due_date: inputDueDate,
       loan_term: loanTerm,
+      transaction_number: inputTransactionNumber,
       previous_loan_amount: previousLoanAmount,
       user_id: userId,
+      created_by_user_id: createdByUserId,
+      created_by_username: createdByUsername,
     } = mapped;
 
     // Validate required customer fields
@@ -319,46 +328,61 @@ app.post('/create-loan', async (req, res) => {
       return res.status(400).json({ message: nameValidation.error });
     }
 
-    // Validate email if provided
-    if (email && !validators.isValidEmail(email)) {
-      return res.status(400).json({ message: 'Invalid email format' });
-    }
-
-    // Validate phone formats if provided
-    if (home_phone && !validators.isValidPhoneFormat(home_phone)) {
-      return res.status(400).json({ message: 'Invalid home_phone format' });
-    }
-    if (mobile_phone && !validators.isValidPhoneFormat(mobile_phone)) {
-      return res.status(400).json({ message: 'Invalid mobile_phone format' });
-    }
-
     // Validate loan amounts
     const amountValidation = validators.validateLoanAmounts(loanAmount, interestRate, loanTerm);
     if (!amountValidation.valid) {
       return res.status(400).json({ message: amountValidation.error });
     }
 
+    // Validate optional customer fields
+    const customerFieldsValidation = validators.validateCustomerFields({
+      email,
+      home_phone,
+      mobile_phone,
+      birthdate,
+      loan_issued_date: loanIssuedDate,
+      due_date: inputDueDate,
+    });
+
+    if (!customerFieldsValidation.valid) {
+      return res.status(400).json({ 
+        message: 'Validation failed', 
+        errors: customerFieldsValidation.errors 
+      });
+    }
+
     // Calculate loan totals
     const totalLoanAmount = parseFloat(previousLoanAmount || 0) + parseFloat(loanAmount);
-    const interestAmount = (totalLoanAmount * parseFloat(interestRate)) / 100;
-    const totalPayableAmount = totalLoanAmount + interestAmount;
+    const calculatedInterestAmount = parseFloat(inputInterestAmount) || 
+      (totalLoanAmount * parseFloat(interestRate)) / 100;
+    const calculatedTotalPayableAmount = parseFloat(inputTotalPayableAmount) || 
+      (totalLoanAmount + calculatedInterestAmount);
 
-    // Calculate due date
-    const issued = new Date(loanIssuedDate);
-    const due = new Date(issued);
-    due.setDate(due.getDate() + parseInt(loanTerm));
+    // Calculate or use provided due date
+    let dueDate;
+    if (inputDueDate) {
+      dueDate = inputDueDate;
+    } else {
+      const issued = new Date(loanIssuedDate || new Date());
+      const due = new Date(issued);
+      due.setDate(due.getDate() + parseInt(loanTerm));
+      dueDate = due.toISOString().slice(0, 10);
+    }
 
-    // Insert loan with new customer fields
+    // Generate or use provided transaction number
+    const transactionNumber = inputTransactionNumber || Math.floor(Math.random() * 1000000000).toString();
+
+    // Insert loan with all new customer fields
     const result = await pool.query(
       `INSERT INTO loans (
         first_name, last_name, email, home_phone, mobile_phone, birthdate,
-        referral, identification_info, address,
+        referral, identification_info, street_address, city, state, zipcode,
         customer_number, loan_amount, interest_rate, interest_amount, total_payable_amount,
         collateral_description, customer_note, transaction_number,
         loan_issued_date, loan_term, due_date,
-        status, remaining_balance, created_by, customer_name
+        status, remaining_balance, created_by, created_by_user_id, created_by_username, customer_name
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, 'active', $21, $22, $23)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29)
       RETURNING *`,
       [
         first_name,
@@ -369,28 +393,33 @@ app.post('/create-loan', async (req, res) => {
         birthdate || null,
         referral || null,
         identification_info || null,
-        address || null,
+        street_address || null,
+        city || null,
+        state || null,
+        zipcode || null,
         customer_number || null,
         totalLoanAmount,
         interestRate,
-        interestAmount,
-        totalPayableAmount,
+        calculatedInterestAmount,
+        calculatedTotalPayableAmount,
         collateral_description || null,
         customer_note || null,
-        Math.floor(Math.random() * 1000000000).toString(),
-        loanIssuedDate,
+        transactionNumber,
+        loanIssuedDate || new Date().toISOString().slice(0, 10),
         loanTerm,
-        due.toISOString().slice(0, 10),
-        totalPayableAmount,
+        dueDate,
+        'active',
+        calculatedTotalPayableAmount,
+        userId || createdByUserId || null,
+        createdByUserId || userId || null,
+        createdByUsername || null,
         `${first_name} ${last_name}`, // Backward compatibility
-        userId || null,
       ]
     );
 
     const loan = validators.formatLoanResponse(result.rows[0]);
 
     res.status(201).json({ 
-      message: 'Loan created successfully', 
       loan 
     });
   } catch (err) {
@@ -402,8 +431,6 @@ app.post('/create-loan', async (req, res) => {
 
 
 // ---------------------------- SEARCH LOAN ----------------------------
-
-// ---------------------------- SEARCH LOAN ----------------------------
 app.get('/search-loan', async (req, res) => {
   try {
     // Accept both camelCase and snake_case query parameters
@@ -413,7 +440,11 @@ app.get('/search-loan', async (req, res) => {
     const email = req.query.email;
     const transactionNumber = req.query.transactionNumber || req.query.transaction_number;
     const mobilePhone = req.query.mobilePhone || req.query.mobile_phone;
+    const homePhone = req.query.homePhone || req.query.home_phone;
     const customerName = req.query.customerName || req.query.customer_name;
+    const city = req.query.city;
+    const state = req.query.state;
+    const zipcode = req.query.zipcode;
 
     // Build dynamic query
     let query = 'SELECT * FROM loans WHERE 1=1';
@@ -448,7 +479,7 @@ app.get('/search-loan', async (req, res) => {
       paramIndex++;
     }
 
-    // Search by transaction number
+    // Search by transaction number (exact match)
     if (transactionNumber) {
       params.push(transactionNumber);
       query += ` AND transaction_number = $${paramIndex}`;
@@ -462,10 +493,38 @@ app.get('/search-loan', async (req, res) => {
       paramIndex++;
     }
 
+    // Search by home phone
+    if (homePhone) {
+      params.push(`%${homePhone}%`);
+      query += ` AND home_phone ILIKE $${paramIndex}`;
+      paramIndex++;
+    }
+
+    // Search by city
+    if (city) {
+      params.push(`%${city}%`);
+      query += ` AND city ILIKE $${paramIndex}`;
+      paramIndex++;
+    }
+
+    // Search by state
+    if (state) {
+      params.push(`%${state}%`);
+      query += ` AND state ILIKE $${paramIndex}`;
+      paramIndex++;
+    }
+
+    // Search by zipcode
+    if (zipcode) {
+      params.push(`%${zipcode}%`);
+      query += ` AND zipcode ILIKE $${paramIndex}`;
+      paramIndex++;
+    }
+
     // Fallback: search by full customer_name (backward compatibility)
     if (customerName && !firstName && !lastName) {
       params.push(`%${customerName}%`);
-      query += ` AND (customer_name ILIKE $${paramIndex} OR CONCAT(first_name, ' ', last_name) ILIKE $${paramIndex})`;
+      query += ` AND customer_name ILIKE $${paramIndex}`;
       paramIndex++;
     }
 
