@@ -12,7 +12,7 @@ app.use(cors());
 
 // PostgreSQL connection
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL || 'postgresql://postgres:1234@localhost:5432/pawn_shop',
+  connectionString: process.env.DATABASE_URL || 'postgresql://postgres:123@localhost:5432/pawn_shop',
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
 });
 
