@@ -4066,7 +4066,6 @@ app.get('/reports/todays-loans-breakdown', authenticateToken, authorizeRole('adm
 });
 
 // ---------------------------- START SERVER ----------------------------
-const PORT = process.env.PORT || 5000;
 
 // Active Loans Report
 app.get('/reports/active-loans', authenticateToken, authorizeRole('admin', 'manager'), async (req, res) => {
