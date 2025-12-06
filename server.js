@@ -101,22 +101,44 @@ cron.schedule('0 0 * * *', async () => {
 
 // ---------------------------- REGISTER ----------------------------
 app.post('/register', async (req, res) => {
-  const { username, password, role } = req.body;
+  const { username, password } = req.body;
 
   try {
+    // Validate input
+    if (!username || !password) {
+      return res.status(400).json({ message: 'Username and password are required' });
+    }
+
+    if (username.length < 3) {
+      return res.status(400).json({ message: 'Username must be at least 3 characters long' });
+    }
+
+    if (password.length < 6) {
+      return res.status(400).json({ message: 'Password must be at least 6 characters long' });
+    }
+
+    // Check if user already exists
+    const existingUser = await pool.query('SELECT * FROM users WHERE username = $1', [username]);
+    if (existingUser.rows.length > 0) {
+      return res.status(400).json({ message: 'Username already exists' });
+    }
+
+    // Hash password and create user
     const hashedPassword = await bcrypt.hash(password, 10);
 
+    // Default new users to 'user' role (role_id = 2, assuming 1 is admin)
     const result = await pool.query(
       `INSERT INTO users (username, password, role_id) 
-       VALUES ($1, $2, (SELECT id FROM user_roles WHERE role_name = $3))
-       RETURNING *`,
-      [username, hashedPassword, role]
+       VALUES ($1, $2, 2)
+       RETURNING id, username, role_id`,
+      [username, hashedPassword]
     );
 
-    res.status(201).json({ message: 'User created successfully', user: result.rows[0] });
+    console.log('✅ New user registered:', { username });
+    res.status(201).json({ message: 'User registered successfully', user: result.rows[0] });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: 'Error creating user' });
+    console.error('Registration error:', err);
+    res.status(500).json({ message: 'Error creating user. Please try again.' });
   }
 });
 
