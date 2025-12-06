@@ -1,9 +1,10 @@
 /**
- * PDF Invoice Generator for PawnFlow Loans - Exact Template Match
- * Creates professional invoices matching the reference template design exactly
+ * PDF Generation Utility - Backend Version
+ * Uses jsPDF to generate professional loan receipts
+ * Matches the correct template format with table layout
  */
 
-const PDFDocument = require('pdfkit');
+const { jsPDF } = require('jspdf');
 const fs = require('fs');
 
 /**
@@ -14,7 +15,7 @@ function formatCurrency(value) {
 }
 
 /**
- * Format date to MM/DD/YYYY format
+ * Format date to display format
  */
 function formatDate(date) {
   if (!date) return 'N/A';
@@ -30,220 +31,162 @@ function formatDate(date) {
 }
 
 /**
- * Generate a professional loan invoice PDF matching the template exactly
+ * Generate a professional loan receipt PDF with table format
  * @param {Object} loan - Loan object from database
  * @returns {Promise<Buffer>} - PDF buffer
  */
 async function generateLoanPDF(loan) {
-  return new Promise((resolve, reject) => {
-    try {
-      console.log('🔧 PDF Generator - Received loan data:', {
-        id: loan?.id,
-        transaction_number: loan?.transaction_number,
-        first_name: loan?.first_name,
-        loan_amount: loan?.loan_amount
-      });
+  try {
+    console.log('🔧 PDF Generator - Received loan data:', {
+      id: loan?.id,
+      transaction_number: loan?.transaction_number,
+      first_name: loan?.first_name,
+      loan_amount: loan?.loan_amount
+    });
 
-      const doc = new PDFDocument({
-        size: 'A4',
-        margin: 40,
-        bufferPages: true
-      });
+    const doc = new jsPDF();
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const margin = 12;
+    const contentWidth = pageWidth - 2 * margin;
+    let yPosition = margin;
 
-      let buffers = [];
-      doc.on('data', buffers.push.bind(buffers));
-      doc.on('end', () => resolve(Buffer.concat(buffers)));
-      doc.on('error', reject);
+    // ===== COMPANY HEADER =====
+    doc.setFontSize(14);
+    doc.setFont(undefined, 'bold');
+    doc.text('GREEN MOOLAA BRAMPTON', pageWidth / 2, yPosition, { align: 'center' });
+    yPosition += 5;
 
-      let yPos = 40;
+    doc.setFontSize(10);
+    doc.setFont(undefined, 'normal');
+    doc.text('263 QUEEN ST. E. UNIT 4', pageWidth / 2, yPosition, { align: 'center' });
+    yPosition += 4;
+    doc.text('BRAMPTON ON L6W 4K6', pageWidth / 2, yPosition, { align: 'center' });
+    yPosition += 4;
+    doc.text('(905) 796-7777', pageWidth / 2, yPosition, { align: 'center' });
+    yPosition += 6;
 
-      // ===== HEADER - Company Name and Address =====
-      doc.fontSize(14)
-        .font('Helvetica-Bold')
-        .fillColor('#000000')
-        .text('GREEN MOOLAA BRAMPTON', { align: 'center' });
+    // Dividing line
+    doc.setDrawColor(0, 0, 0);
+    doc.line(margin, yPosition, pageWidth - margin, yPosition);
+    yPosition += 5;
 
-      yPos += 16;
+    // ===== CUSTOMER INFO & TRANSACTION =====
+    doc.setFontSize(9);
+    doc.setFont(undefined, 'bold');
+    doc.text('[ORIGINAL]', margin, yPosition);
 
-      doc.fontSize(10)
-        .font('Helvetica')
-        .text('263 QUEEN ST E, UNIT 4 BRAMPTON ON L6W 4K6', { align: 'center' });
+    doc.setFontSize(8);
+    const transactionNumber = loan.transaction_number || loan.transactionNumber || 'N/A';
+    doc.text(`Transaction: ${transactionNumber}`, pageWidth - margin - 40, yPosition);
+    yPosition += 5;
 
-      yPos += 12;
+    // Customer name
+    const firstName = loan.first_name || loan.firstName || '';
+    const lastName = loan.last_name || loan.lastName || '';
+    doc.setFontSize(9);
+    doc.setFont(undefined, 'normal');
+    doc.text(`${firstName} ${lastName}`, margin, yPosition);
+    yPosition += 4;
 
-      doc.fontSize(10)
-        .text('(905) 796-7777', { align: 'center' });
+    // Loan details
+    doc.setFontSize(8);
+    const loanId = loan.id || loan.loanId || 'N/A';
+    const loanAmount = loan.loan_amount || loan.loanAmount || '0.00';
+    const dueDate = loan.due_date || loan.dueDate || 'N/A';
 
-      yPos += 25;
+    doc.text(`Loan ID: ${loanId}`, margin, yPosition);
+    yPosition += 4;
+    doc.text(`Loan Amount: $${parseFloat(loanAmount).toFixed(2)}`, margin, yPosition);
+    yPosition += 4;
+    doc.text(`Due Date: ${dueDate}`, margin, yPosition);
+    yPosition += 6;
 
-      // ===== BILLED TO SECTION =====
-      doc.fontSize(11)
-        .font('Helvetica-Bold')
-        .fillColor('#000000')
-        .text('BILLED TO:');
+    // ===== TABLE HEADER =====
+    const tableTop = yPosition;
+    const colWidths = {
+      item: 25,
+      category: 35,
+      description: 70,
+      amount: 30
+    };
 
-      yPos += 16;
+    // Header background
+    doc.setFillColor(200, 200, 200);
+    doc.rect(margin, tableTop, contentWidth, 7, 'F');
 
-      doc.fontSize(10)
-        .font('Helvetica')
-        .text(`${loan.first_name || ''} ${loan.last_name || ''}`);
+    doc.setFont(undefined, 'bold');
+    doc.setFontSize(9);
+    doc.text('ITEM', margin + 2, tableTop + 5);
+    doc.text('CATEGORY', margin + colWidths.item + 2, tableTop + 5);
+    doc.text('DESCRIPTION', margin + colWidths.item + colWidths.category + 2, tableTop + 5);
+    doc.text('AMOUNT', margin + colWidths.item + colWidths.category + colWidths.description + 2, tableTop + 5);
 
-      yPos += 35;
+    // Table border
+    doc.setDrawColor(0, 0, 0);
+    doc.rect(margin, tableTop, contentWidth, 7);
+    doc.line(margin + colWidths.item, tableTop, margin + colWidths.item, tableTop + 7);
+    doc.line(margin + colWidths.item + colWidths.category, tableTop, margin + colWidths.item + colWidths.category, tableTop + 7);
+    doc.line(margin + colWidths.item + colWidths.category + colWidths.description, tableTop, margin + colWidths.item + colWidths.category + colWidths.description, tableTop + 7);
 
-      // ===== TRANSACTION LINE WITH UNDERLINE =====
-      // Draw horizontal line
-      doc.strokeColor('#000000')
-        .lineWidth(0.5)
-        .moveTo(60, yPos)
-        .lineTo(540, yPos)
-        .stroke();
+    yPosition = tableTop + 8;
 
-      yPos += 12;
+    // ===== TABLE CONTENT =====
+    doc.setFont(undefined, 'normal');
+    doc.setFontSize(8);
+    doc.text('LN-' + loanId, margin + 2, yPosition);
 
-      // Transaction details row
-      doc.fontSize(10)
-        .font('Helvetica-Bold')
-        .fillColor('#000000')
-        .text('Transaction No. ' + (loan.transaction_number || 'N/A'), 60, yPos);
+    // Use actual collateral/item data from loan
+    const itemCategory = loan.item_category || loan.itemCategory || 'Loan';
+    const itemDescription = loan.collateral_description || loan.collateralDescription || loan.item_description || loan.itemDescription || 'Pawn Loan Agreement';
 
-      doc.text('Status: ' + (loan.status || 'ACTIVE').toUpperCase(), 240, yPos);
+    doc.text(itemCategory, margin + colWidths.item + 2, yPosition);
+    doc.text(itemDescription, margin + colWidths.item + colWidths.category + 2, yPosition);
 
-      doc.text('Amount: ' + formatCurrency(loan.loan_amount), 420, yPos, { align: 'right' });
+    const totalPayable = loan.total_payable_amount || loan.totalPayableAmount || loanAmount;
+    doc.text(formatCurrency(totalPayable), margin + colWidths.item + colWidths.category + colWidths.description + 2, yPosition);
 
-      yPos += 18;
+    yPosition += 8;
 
-      // Draw line below transaction details
-      doc.strokeColor('#000000')
-        .lineWidth(0.5)
-        .moveTo(60, yPos)
-        .lineTo(540, yPos)
-        .stroke();
+    // ===== CHARGES DUE =====
+    doc.setFont(undefined, 'normal');
+    doc.setFontSize(8);
+    doc.text('CHARGES ON THIS ACCOUNT ARE DUE ON OR BEFORE', margin + colWidths.item + colWidths.category + 5, yPosition);
+    doc.text(dueDate, pageWidth - margin - 40, yPosition);
+    yPosition += 6;
 
-      yPos += 18;
+    // ===== TOTAL =====
+    doc.setFont(undefined, 'bold');
+    doc.setFontSize(9);
+    doc.text('TOTAL', margin + colWidths.item + colWidths.category + 5, yPosition);
+    doc.text(formatCurrency(totalPayable), pageWidth - margin - 40, yPosition);
+    yPosition += 8;
 
-      // ===== COLLATERAL ITEM LINE =====
-      doc.fontSize(10)
-        .font('Helvetica')
-        .fillColor('#000000')
-        .text('Collateral Item', 60, yPos);
+    // ===== LEGAL TERMS =====
+    doc.setFont(undefined, 'normal');
+    doc.setFontSize(7);
 
-      doc.text(loan.collateral_description || loan.item_description || 'N/A', 280, yPos);
+    const legalText = `I, the undersigned (herein 'the seller'), do hereby loan the item(s) above amount, the receipt of which is acknowledge by the undersigned (herein 'the Seller'), said Seller does sell, transfer, and assign all rights, title and interest in the described property to GRN. The seller declares that the above is their own personal property free and clear of all claims and liens whatsoever and that they have the full power to sell, transfer and deliver said property as provided herein.`;
 
-      yPos += 16;
+    const splitText = doc.splitTextToSize(legalText, contentWidth - 4);
+    doc.text(splitText, margin + 2, yPosition);
 
-      // Draw separator line
-      doc.strokeColor('#000000')
-        .lineWidth(0.5)
-        .moveTo(60, yPos)
-        .lineTo(540, yPos)
-        .stroke();
+    // ===== FOOTER =====
+    doc.setDrawColor(0, 0, 0);
+    doc.line(margin, pageHeight - 10, pageWidth - margin, pageHeight - 10);
+    doc.setFontSize(7);
+    doc.text('Pawn-GR-02-CAN', pageWidth - margin - 30, pageHeight - 5);
 
-      yPos += 18;
-
-      // ===== ITEM DESCRIPTION LINE =====
-      doc.fontSize(10)
-        .font('Helvetica')
-        .fillColor('#000000')
-        .text('Item Description', 60, yPos);
-
-      doc.text(loan.item_description || 'None', 280, yPos);
-
-      yPos += 16;
-
-      // Draw separator line
-      doc.strokeColor('#000000')
-        .lineWidth(0.5)
-        .moveTo(60, yPos)
-        .lineTo(540, yPos)
-        .stroke();
-
-      yPos += 28;
-
-      // ===== BLANK SPACE FOR NOTES =====
-      doc.strokeColor('#000000')
-        .lineWidth(0.5)
-        .moveTo(60, yPos)
-        .lineTo(540, yPos)
-        .stroke();
-
-      yPos += 28;
-
-      // ===== FINANCIAL DETAILS SECTION =====
-      // Interest Amount (right side)
-      doc.fontSize(10)
-        .font('Helvetica')
-        .fillColor('#000000')
-        .text('Interest Amount:', 320, yPos, { width: 100, align: 'right' });
-
-      doc.fontSize(10)
-        .font('Helvetica-Bold')
-        .text(formatCurrency(loan.interest_amount || 0), 420, yPos, { width: 100, align: 'right' });
-
-      yPos += 20;
-
-      // Loan Created date (left), Recurring Fee (right)
-      doc.fontSize(10)
-        .font('Helvetica')
-        .fillColor('#000000')
-        .text('Loan Created: ' + formatDate(loan.loan_issued_date), 60, yPos);
-
-      doc.text('Recurring Fee:', 320, yPos, { width: 100, align: 'right' });
-
-      doc.fontSize(10)
-        .font('Helvetica-Bold')
-        .text(formatCurrency(loan.recurring_fee || 0), 420, yPos, { width: 100, align: 'right' });
-
-      yPos += 20;
-
-      // Due Date (left), Total Payable (right - highlighted)
-      doc.fontSize(10)
-        .font('Helvetica')
-        .fillColor('#000000')
-        .text('Due Date: ' + formatDate(loan.due_date), 60, yPos);
-
-      // Total Payable Box
-      doc.fontSize(11)
-        .font('Helvetica-Bold')
-        .text('Total', 320, yPos + 2, { width: 100, align: 'right' });
-
-      doc.fontSize(16)
-        .font('Helvetica-Bold')
-        .text(formatCurrency(loan.total_payable_amount || 0), 350, yPos + 15, { width: 80, align: 'center' });
-
-      yPos += 50;
-
-      // ===== TERMS AND CONDITIONS =====
-      doc.fontSize(9)
-        .font('Helvetica')
-        .fillColor('#000000');
-
-      const termsText = `I, the undersigned (herein 'the seller'), do hereby loan the item(s) above to the customer amount, the receipt of which is acknowledge by the undersigned (herein 'the Seller'), said Seller does sell, transfer, and assign all rights, title and interest in the described property to GRN. The seller declares that the above is their own personal property free and all claims and liens whatsoever and that they have the full power to sell, transfer and deliver said property as provided herein.
-
-Seller is hereby granted a customer option by GRN to repurchase the described property from GRN at a mutually agreeable price, which is set forth on this contract. The seller has (30) days from the date of the agreement to exercise this agreement to exercise the seller option and will forfeit the option (1) days from the agreement date.`;
-
-      doc.text(termsText, 60, yPos, {
-        width: 480,
-        height: 120,
-        align: 'left',
-        lineGap: 3
-      });
-
-      // ===== FOOTER =====
-      const footerY = doc.page.height - 40;
-
-      doc.fontSize(8)
-        .font('Helvetica')
-        .fillColor('#666666')
-        .text('Generated: ' + new Date().toLocaleString(), 60, footerY);
-
-      doc.end();
-    } catch (error) {
-      console.error('❌ PDF Generation Error:', error);
-      reject(error);
-    }
-  });
+    // Return PDF as buffer
+    const pdfBuffer = Buffer.from(doc.output('arraybuffer'));
+    
+    console.log('✅ PDF generated successfully, buffer size:', pdfBuffer.length);
+    return pdfBuffer;
+  } catch (error) {
+    console.error('❌ PDF Generation Error:', error);
+    throw error;
+  }
 }
-
 
 /**
  * Save PDF to file system (optional)
