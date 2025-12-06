@@ -126,16 +126,26 @@ app.post('/register', async (req, res) => {
     // Hash password and create user
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Default new users to 'user' role (role_id = 4 for 'user' role)
+    // Get the default user role ID - try 4 first, fallback to 3 (clerk) if not available
     console.log('📝 Attempting to register user:', username);
+    let roleId = 4; // Default to 'user' role
+    
+    // Check which roles exist
+    const rolesCheck = await pool.query('SELECT id FROM user_roles WHERE id = $1 OR id = $2 OR id = $3', [4, 3, 2]);
+    if (rolesCheck.rows.length > 0) {
+      // If role 4 doesn't exist, use the first available non-admin role
+      const availableRoles = rolesCheck.rows.map(r => r.id).sort((a, b) => b - a);
+      roleId = availableRoles[0]; // Use the highest available role ID
+    }
+    
     const result = await pool.query(
       `INSERT INTO users (username, password, role_id) 
-       VALUES ($1, $2, 4)
+       VALUES ($1, $2, $3)
        RETURNING id, username, role_id`,
-      [username, hashedPassword]
+      [username, hashedPassword, roleId]
     );
 
-    console.log('✅ New user registered:', { id: result.rows[0].id, username: result.rows[0].username });
+    console.log('✅ New user registered:', { id: result.rows[0].id, username: result.rows[0].username, role_id: roleId });
     res.status(201).json({ message: 'User registered successfully', user: result.rows[0] });
   } catch (err) {
     console.error('❌ Registration error:', err.message);
