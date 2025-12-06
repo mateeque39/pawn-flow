@@ -4437,6 +4437,72 @@ process.on('unhandledRejection', (reason, promise) => {
   process.exit(1);
 });
 
+// Initialize database schema if needed
+async function initializeDatabase() {
+  try {
+    // Check if customers table exists
+    const tableCheck = await pool.query(
+      `SELECT EXISTS (
+        SELECT FROM information_schema.tables 
+        WHERE table_schema = 'public' 
+        AND table_name = 'customers'
+      )`
+    );
+    
+    if (!tableCheck.rows[0].exists) {
+      console.log('📋 Creating missing customers table...');
+      
+      // Create customers table
+      await pool.query(`
+        CREATE SEQUENCE IF NOT EXISTS customers_id_seq AS integer START WITH 1 INCREMENT BY 1;
+        
+        CREATE TABLE IF NOT EXISTS customers (
+          id integer NOT NULL DEFAULT nextval('customers_id_seq'),
+          first_name character varying(100) NOT NULL,
+          last_name character varying(100) NOT NULL,
+          email character varying(255),
+          home_phone character varying(20),
+          mobile_phone character varying(20),
+          birthdate date,
+          id_type character varying(50),
+          id_number character varying(100),
+          referral character varying(255),
+          identification_info text,
+          street_address character varying(255),
+          city character varying(128),
+          state character varying(64),
+          zipcode character varying(32),
+          customer_number character varying(50),
+          created_by_user_id integer,
+          created_by_username character varying(100),
+          updated_by_user_id integer,
+          updated_by_username character varying(100),
+          created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+          updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+          profile_image text,
+          PRIMARY KEY (id)
+        );
+        
+        CREATE INDEX IF NOT EXISTS idx_customers_email ON customers(email);
+        CREATE INDEX IF NOT EXISTS idx_customers_first_name ON customers(first_name);
+        CREATE INDEX IF NOT EXISTS idx_customers_home_phone ON customers(home_phone);
+        CREATE INDEX IF NOT EXISTS idx_customers_last_name ON customers(last_name);
+        CREATE INDEX IF NOT EXISTS idx_customers_mobile_phone ON customers(mobile_phone);
+      `);
+      
+      console.log('✅ Customers table created successfully');
+    }
+  } catch (err) {
+    console.warn('⚠️  Database initialization warning:', err.message);
+    // Don't exit - continue startup even if initialization fails
+  }
+}
+
+// Initialize database before starting server
+initializeDatabase().then(() => {
+  console.log('✅ Database initialized');
+});
+
 // Start HTTP server
 console.log('⚙️  Starting PawnFlow Server...');
 console.log('🔌 Listening on port', PORT);
