@@ -20,6 +20,7 @@ async function testPDFGeneration() {
       itemCategory: 'Jewelry',
       loanAmount: 500,
       interestRate: 15,
+      loan_term: 30,
       dueDate: '2025-12-21'
     };
 

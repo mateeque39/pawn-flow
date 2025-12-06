@@ -1,19 +1,49 @@
 /**
- * PDF Invoice Generator for PawnFlow Loans - Enhanced Table Format
- * Creates professional invoices with all loan details in proper tables
+ * PDF Invoice Generator for PawnFlow Loans - Exact Template Match
+ * Creates professional invoices matching the reference template design exactly
  */
 
 const PDFDocument = require('pdfkit');
 const fs = require('fs');
 
 /**
- * Generate a professional loan invoice PDF with table format
+ * Format currency values
+ */
+function formatCurrency(value) {
+  return `$${parseFloat(value || 0).toFixed(2)}`;
+}
+
+/**
+ * Format date to MM/DD/YYYY format
+ */
+function formatDate(date) {
+  if (!date) return 'N/A';
+  try {
+    return new Date(date).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    });
+  } catch {
+    return date;
+  }
+}
+
+/**
+ * Generate a professional loan invoice PDF matching the template exactly
  * @param {Object} loan - Loan object from database
  * @returns {Promise<Buffer>} - PDF buffer
  */
 async function generateLoanPDF(loan) {
   return new Promise((resolve, reject) => {
     try {
+      console.log('🔧 PDF Generator - Received loan data:', {
+        id: loan?.id,
+        transaction_number: loan?.transaction_number,
+        first_name: loan?.first_name,
+        loan_amount: loan?.loan_amount
+      });
+
       const doc = new PDFDocument({
         size: 'A4',
         margin: 40,
@@ -25,243 +55,195 @@ async function generateLoanPDF(loan) {
       doc.on('end', () => resolve(Buffer.concat(buffers)));
       doc.on('error', reject);
 
-      // Colors
-      const darkBlue = '#2C3E50';
-      const orange = '#F39C12';
-      const green = '#27AE60';
-      const lightGray = '#ECF0F1';
-      const white = '#FFFFFF';
-      const textColor = '#2C3E50';
+      let yPos = 40;
 
-      // ===== HEADER SECTION =====
-      doc.fillColor(darkBlue)
-        .rect(0, 0, doc.page.width, 100)
-        .fill();
-
-      // Company Name
-      doc.fillColor(white)
-        .fontSize(28)
+      // ===== HEADER - Company Name and Address =====
+      doc.fontSize(14)
         .font('Helvetica-Bold')
-        .text('PAWN FLOW', 50, 20);
+        .fillColor('#000000')
+        .text('GREEN MOOLAA BRAMPTON', { align: 'center' });
 
-      // Company Info
+      yPos += 16;
+
       doc.fontSize(10)
         .font('Helvetica')
-        .text('Professional Pawn Shop Management', 50, 52);
+        .text('263 QUEEN ST E, UNIT 4 BRAMPTON ON L6W 4K6', { align: 'center' });
 
+      yPos += 12;
+
+      doc.fontSize(10)
+        .text('(905) 796-7777', { align: 'center' });
+
+      yPos += 25;
+
+      // ===== BILLED TO SECTION =====
+      doc.fontSize(11)
+        .font('Helvetica-Bold')
+        .fillColor('#000000')
+        .text('BILLED TO:');
+
+      yPos += 16;
+
+      doc.fontSize(10)
+        .font('Helvetica')
+        .text(`${loan.first_name || ''} ${loan.last_name || ''}`);
+
+      yPos += 35;
+
+      // ===== TRANSACTION LINE WITH UNDERLINE =====
+      // Draw horizontal line
+      doc.strokeColor('#000000')
+        .lineWidth(0.5)
+        .moveTo(60, yPos)
+        .lineTo(540, yPos)
+        .stroke();
+
+      yPos += 12;
+
+      // Transaction details row
+      doc.fontSize(10)
+        .font('Helvetica-Bold')
+        .fillColor('#000000')
+        .text('Transaction No. ' + (loan.transaction_number || 'N/A'), 60, yPos);
+
+      doc.text('Status: ' + (loan.status || 'ACTIVE').toUpperCase(), 240, yPos);
+
+      doc.text('Amount: ' + formatCurrency(loan.loan_amount), 420, yPos, { align: 'right' });
+
+      yPos += 18;
+
+      // Draw line below transaction details
+      doc.strokeColor('#000000')
+        .lineWidth(0.5)
+        .moveTo(60, yPos)
+        .lineTo(540, yPos)
+        .stroke();
+
+      yPos += 18;
+
+      // ===== COLLATERAL ITEM LINE =====
+      doc.fontSize(10)
+        .font('Helvetica')
+        .fillColor('#000000')
+        .text('Collateral Item', 60, yPos);
+
+      doc.text(loan.collateral_description || loan.item_description || 'N/A', 280, yPos);
+
+      yPos += 16;
+
+      // Draw separator line
+      doc.strokeColor('#000000')
+        .lineWidth(0.5)
+        .moveTo(60, yPos)
+        .lineTo(540, yPos)
+        .stroke();
+
+      yPos += 18;
+
+      // ===== ITEM DESCRIPTION LINE =====
+      doc.fontSize(10)
+        .font('Helvetica')
+        .fillColor('#000000')
+        .text('Item Description', 60, yPos);
+
+      doc.text(loan.item_description || 'None', 280, yPos);
+
+      yPos += 16;
+
+      // Draw separator line
+      doc.strokeColor('#000000')
+        .lineWidth(0.5)
+        .moveTo(60, yPos)
+        .lineTo(540, yPos)
+        .stroke();
+
+      yPos += 28;
+
+      // ===== BLANK SPACE FOR NOTES =====
+      doc.strokeColor('#000000')
+        .lineWidth(0.5)
+        .moveTo(60, yPos)
+        .lineTo(540, yPos)
+        .stroke();
+
+      yPos += 28;
+
+      // ===== FINANCIAL DETAILS SECTION =====
+      // Interest Amount (right side)
+      doc.fontSize(10)
+        .font('Helvetica')
+        .fillColor('#000000')
+        .text('Interest Amount:', 320, yPos, { width: 100, align: 'right' });
+
+      doc.fontSize(10)
+        .font('Helvetica-Bold')
+        .text(formatCurrency(loan.interest_amount || 0), 420, yPos, { width: 100, align: 'right' });
+
+      yPos += 20;
+
+      // Loan Created date (left), Recurring Fee (right)
+      doc.fontSize(10)
+        .font('Helvetica')
+        .fillColor('#000000')
+        .text('Loan Created: ' + formatDate(loan.loan_issued_date), 60, yPos);
+
+      doc.text('Recurring Fee:', 320, yPos, { width: 100, align: 'right' });
+
+      doc.fontSize(10)
+        .font('Helvetica-Bold')
+        .text(formatCurrency(loan.recurring_fee || 0), 420, yPos, { width: 100, align: 'right' });
+
+      yPos += 20;
+
+      // Due Date (left), Total Payable (right - highlighted)
+      doc.fontSize(10)
+        .font('Helvetica')
+        .fillColor('#000000')
+        .text('Due Date: ' + formatDate(loan.due_date), 60, yPos);
+
+      // Total Payable Box
+      doc.fontSize(11)
+        .font('Helvetica-Bold')
+        .text('Total', 320, yPos + 2, { width: 100, align: 'right' });
+
+      doc.fontSize(16)
+        .font('Helvetica-Bold')
+        .text(formatCurrency(loan.total_payable_amount || 0), 350, yPos + 15, { width: 80, align: 'center' });
+
+      yPos += 50;
+
+      // ===== TERMS AND CONDITIONS =====
       doc.fontSize(9)
-        .text('Phone: (555) 123-4567 | Email: info@pawnflow.com', 50, 68);
+        .font('Helvetica')
+        .fillColor('#000000');
 
-      // Transaction Number (Orange box, top right)
-      const transNum = loan.transaction_number || 'N/A';
-      doc.fillColor(orange)
-        .rect(450, 20, 120, 60)
-        .fill();
+      const termsText = `I, the undersigned (herein 'the seller'), do hereby loan the item(s) above to the customer amount, the receipt of which is acknowledge by the undersigned (herein 'the Seller'), said Seller does sell, transfer, and assign all rights, title and interest in the described property to GRN. The seller declares that the above is their own personal property free and all claims and liens whatsoever and that they have the full power to sell, transfer and deliver said property as provided herein.
 
-      doc.fillColor(white)
-        .fontSize(8)
-        .text('TRANSACTION #', 460, 30, { width: 100, align: 'center' })
-        .fontSize(14)
-        .font('Helvetica-Bold')
-        .text(transNum, 460, 48, { width: 100, align: 'center' });
+Seller is hereby granted a customer option by GRN to repurchase the described property from GRN at a mutually agreeable price, which is set forth on this contract. The seller has (30) days from the date of the agreement to exercise this agreement to exercise the seller option and will forfeit the option (1) days from the agreement date.`;
 
-      let yPosition = 120;
-      doc.fillColor(textColor).font('Helvetica');
-
-      // ===== CUSTOMER & IDENTIFICATION DETAILS =====
-      doc.fontSize(14)
-        .font('Helvetica-Bold')
-        .fillColor(darkBlue)
-        .text('CUSTOMER & IDENTIFICATION DETAILS', 50, yPosition);
-
-      yPosition += 25;
-
-      const customerData = [
-        { field: 'First Name', value: loan.first_name || '-' },
-        { field: 'Last Name', value: loan.last_name || '-' },
-        { field: 'Email', value: loan.email || '-' },
-        { field: 'Mobile Phone', value: loan.mobile_phone || '-' },
-        { field: 'Home Phone', value: loan.home_phone || '-' },
-        { field: 'Birthdate', value: loan.birthdate ? new Date(loan.birthdate).toLocaleDateString() : '-' },
-        { field: 'Street Address', value: loan.street_address || '-' },
-        { field: 'City', value: loan.city || '-' },
-        { field: 'State', value: loan.state || '-' },
-        { field: 'Zipcode', value: loan.zipcode || '-' },
-        { field: 'ID Type', value: loan.id_type || '-' },
-        { field: 'ID Number', value: loan.id_number || '-' }
-      ];
-
-      drawTable(doc, yPosition, customerData, darkBlue, orange, green, lightGray);
-      yPosition += (Math.ceil(customerData.length / 2) * 28) + 45;
-
-      // ===== ITEM & COLLATERAL DETAILS =====
-      doc.fontSize(14)
-        .font('Helvetica-Bold')
-        .fillColor(darkBlue)
-        .text('ITEM & COLLATERAL DETAILS', 50, yPosition);
-
-      yPosition += 25;
-
-      const itemData = [
-        { field: 'Item Category', value: loan.item_category || '-' },
-        { field: 'Item Description', value: loan.item_description || '-' },
-        { field: 'Collateral Description', value: loan.collateral_description || '-' },
-        { field: 'Status', value: (loan.status || 'ACTIVE').toUpperCase() }
-      ];
-
-      drawTable(doc, yPosition, itemData, darkBlue, orange, green, lightGray);
-      yPosition += (Math.ceil(itemData.length / 2) * 28) + 45;
-
-      // ===== FINANCIAL DETAILS =====
-      doc.fontSize(14)
-        .font('Helvetica-Bold')
-        .fillColor(darkBlue)
-        .text('FINANCIAL DETAILS', 50, yPosition);
-
-      yPosition += 25;
-
-      const rowHeight = 28;
-      const financialData = [
-        { label: 'Loan Amount', value: `$${parseFloat(loan.loan_amount || 0).toFixed(2)}`, highlight: false },
-        { label: 'Interest Rate', value: `${parseFloat(loan.interest_rate || 0).toFixed(2)}%`, highlight: false },
-        { label: 'Interest Amount', value: `$${parseFloat(loan.interest_amount || 0).toFixed(2)}`, highlight: false },
-        { label: 'Total Payable Amount', value: `$${parseFloat(loan.total_payable_amount || 0).toFixed(2)}`, highlight: true },
-        { label: 'Remaining Balance', value: `$${parseFloat(loan.remaining_balance || loan.total_payable_amount || 0).toFixed(2)}`, highlight: true }
-      ];
-
-      // Header row
-      doc.fillColor(darkBlue)
-        .rect(40, yPosition - 5, doc.page.width - 80, rowHeight)
-        .fill();
-
-      doc.fillColor(white)
-        .fontSize(10)
-        .font('Helvetica-Bold')
-        .text('Description', 50, yPosition + 5)
-        .text('Amount', 400, yPosition + 5);
-
-      yPosition += rowHeight + 5;
-
-      financialData.forEach((item, idx) => {
-        const rowY = yPosition + (idx * rowHeight);
-        const isHighlight = item.highlight;
-
-        doc.fillColor(isHighlight ? green : (idx % 2 === 0 ? lightGray : white))
-          .rect(40, rowY - 5, doc.page.width - 80, rowHeight)
-          .fill();
-
-        doc.strokeColor(darkBlue)
-          .lineWidth(0.5)
-          .rect(40, rowY - 5, doc.page.width - 80, rowHeight)
-          .stroke();
-
-        doc.fillColor(isHighlight ? white : textColor)
-          .fontSize(10)
-          .font('Helvetica-Bold')
-          .text(item.label, 50, rowY)
-          .fillColor(isHighlight ? white : orange)
-          .text(item.value, 400, rowY);
+      doc.text(termsText, 60, yPos, {
+        width: 480,
+        height: 120,
+        align: 'left',
+        lineGap: 3
       });
 
-      yPosition += (financialData.length * rowHeight) + 35;
-
-      // ===== LOAN DATES =====
-      doc.fontSize(14)
-        .font('Helvetica-Bold')
-        .fillColor(darkBlue)
-        .text('LOAN DATES', 50, yPosition);
-
-      yPosition += 25;
-
-      const datesData = [
-        { field: 'Loan Issued Date', value: loan.loan_issued_date ? new Date(loan.loan_issued_date).toLocaleDateString() : new Date().toLocaleDateString() },
-        { field: 'Due Date', value: loan.due_date ? new Date(loan.due_date).toLocaleDateString() : '-' }
-      ];
-
-      drawTable(doc, yPosition, datesData, darkBlue, orange, green, lightGray);
-
       // ===== FOOTER =====
-      const footerY = doc.page.height - 60;
-
-      doc.fillColor(darkBlue)
-        .rect(0, footerY - 30, doc.page.width, doc.page.height - footerY + 30)
-        .fill();
-
-      doc.fillColor(white)
-        .fontSize(9)
-        .font('Helvetica')
-        .text('Generated: ' + new Date().toLocaleString(), 50, footerY, { align: 'left' })
-        .text('Pawn Flow Management System', doc.page.width - 200, footerY, { align: 'right', width: 150 });
+      const footerY = doc.page.height - 40;
 
       doc.fontSize(8)
-        .text('This document is generated electronically. No signature required.', 50, footerY + 15);
+        .font('Helvetica')
+        .fillColor('#666666')
+        .text('Generated: ' + new Date().toLocaleString(), 60, footerY);
 
       doc.end();
     } catch (error) {
+      console.error('❌ PDF Generation Error:', error);
       reject(error);
     }
   });
 }
 
-/**
- * Draw a 2-column table with field/value pairs
- */
-function drawTable(doc, startY, data, darkBlue, orange, green, lightGray) {
-  const rowHeight = 28;
-  const colWidth = 260;
-
-  // Header row
-  doc.fillColor(darkBlue)
-    .rect(40, startY - 5, doc.page.width - 80, rowHeight)
-    .fill();
-
-  doc.fillColor('#FFFFFF')
-    .fontSize(10)
-    .font('Helvetica-Bold')
-    .text('Field', 50, startY + 5)
-    .text('Value', 310, startY + 5);
-
-  let currentY = startY + rowHeight + 5;
-
-  // Data rows (2 per row)
-  for (let i = 0; i < data.length; i += 2) {
-    const isEven = (i / 2) % 2 === 0;
-    const rowY = currentY;
-
-    // Background
-    doc.fillColor(isEven ? lightGray : '#FFFFFF')
-      .rect(40, rowY - 5, doc.page.width - 80, rowHeight)
-      .fill();
-
-    // Border
-    doc.strokeColor(darkBlue)
-      .lineWidth(0.5)
-      .rect(40, rowY - 5, doc.page.width - 80, rowHeight)
-      .stroke();
-
-    doc.fontSize(9)
-      .font('Helvetica')
-      .fillColor('#2C3E50');
-
-    // Left column
-    doc.text(data[i].field + ':', 50, rowY);
-    doc.fillColor(green)
-      .font('Helvetica-Bold')
-      .text(String(data[i].value), 310, rowY);
-
-    // Right column (if exists)
-    if (data[i + 1]) {
-      doc.fillColor('#2C3E50')
-        .font('Helvetica')
-        .text(data[i + 1].field + ':', 50, rowY + 14);
-      doc.fillColor(green)
-        .font('Helvetica-Bold')
-        .text(String(data[i + 1].value), 310, rowY + 14);
-    }
-
-    currentY += rowHeight;
-  }
-}
 
 /**
  * Save PDF to file system (optional)
@@ -278,9 +260,10 @@ async function savePDFToFile(loan, outputDir = './pdfs') {
     const pdfBuffer = await generateLoanPDF(loan);
     fs.writeFileSync(filepath, pdfBuffer);
 
+    console.log(`✅ PDF saved successfully: ${filepath}`);
     return filepath;
   } catch (error) {
-    console.error('Error saving PDF to file:', error);
+    console.error('❌ Error saving PDF to file:', error);
     throw error;
   }
 }

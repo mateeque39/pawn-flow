@@ -80,7 +80,7 @@ Should return JSON data
 ### Step 6: You're Done! 🎉
 Your pawn shop system is now live on production servers!
 
-**Live URLs:**
+**Live URLs:**  
 - Frontend: `https://pawnflow-frontend.vercel.app`
 - Backend: `https://pawnflow-backend-production-xxxxx.railway.app`
 - Database: PostgreSQL on Railway (managed)

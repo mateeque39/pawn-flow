@@ -107,6 +107,15 @@ function mapRequestToDb(body) {
     'userId': 'user_id',
     'createdByUserId': 'created_by_user_id',
     'createdByUsername': 'created_by_username',
+    'recurringFee': 'recurring_fee',
+    'collateralImage': 'collateral_image',
+    'profileImage': 'profile_image',
+    'itemDescription': 'item_description',
+    'itemCategory': 'item_category',
+    'idType': 'id_type',
+    'idNumber': 'id_number',
+    'identificationInfo': 'identification_info',
+    'previousLoanAmount': 'previous_loan_amount',
   };
 
   const mapped = {};
@@ -190,7 +199,8 @@ function formatLoanResponse(loanObject) {
     'total_payable_amount', 'loan_issued_date', 'loan_term', 'due_date', 
     'transaction_number', 'status', 'collateral_description', 'customer_note', 
     'remaining_balance', 'created_by', 'created_by_user_id', 'created_by_username',
-    'item_category', 'item_description', 'issued_date', 'redeemed_date', 
+    'item_category', 'item_description', 'issued_date',
+      'redeemed_date', 'collateral_image', 
     'forfeited_date', 'is_redeemed', 'is_forfeited', 'created_at', 'updated_at'
   ];
 
@@ -216,3 +226,4 @@ module.exports = {
   mapRequestToDb,
   formatLoanResponse,
 };
+
