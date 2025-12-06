@@ -4547,25 +4547,32 @@ async function initializeDatabase() {
     );
 
     if (loansTableCheck.rows[0].exists) {
-      // Check if customer_id column exists in loans table
-      const columnCheck = await pool.query(
-        `SELECT EXISTS (
-          SELECT FROM information_schema.columns 
-          WHERE table_schema = 'public' 
-          AND table_name = 'loans' 
-          AND column_name = 'customer_id'
-        )`
-      );
+      // List of columns to ensure exist in loans table
+      const requiredColumns = [
+        { name: 'customer_id', definition: 'customer_id integer REFERENCES customers(id)' },
+        { name: 'recurring_fee', definition: 'recurring_fee DECIMAL(10, 2) DEFAULT 0.00' },
+        { name: 'redemption_fee', definition: 'redemption_fee DECIMAL(10, 2) DEFAULT 0.00' }
+      ];
 
-      if (!columnCheck.rows[0].exists) {
-        console.log('📋 Adding missing customer_id column to loans table...');
+      for (const col of requiredColumns) {
         try {
-          await pool.query(`
-            ALTER TABLE loans ADD COLUMN customer_id integer REFERENCES customers(id)
-          `);
-          console.log('✅ customer_id column added to loans table');
+          const columnCheck = await pool.query(
+            `SELECT EXISTS (
+              SELECT FROM information_schema.columns 
+              WHERE table_schema = 'public' 
+              AND table_name = 'loans' 
+              AND column_name = $1
+            )`,
+            [col.name]
+          );
+
+          if (!columnCheck.rows[0].exists) {
+            console.log(`📋 Adding missing ${col.name} column to loans table...`);
+            await pool.query(`ALTER TABLE loans ADD COLUMN ${col.definition}`);
+            console.log(`✅ ${col.name} column added to loans table`);
+          }
         } catch (addColumnErr) {
-          console.warn('⚠️  Could not add customer_id column:', addColumnErr.message);
+          console.warn(`⚠️  Could not add ${col.name} column:`, addColumnErr.message);
         }
       }
     }
