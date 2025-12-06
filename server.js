@@ -32,10 +32,12 @@ app.use(cors({
   allowedHeaders: '*'
 }));
 
-// PostgreSQL connection
-if (!process.env.DATABASE_URL) {
-  console.error('❌ FATAL: DATABASE_URL environment variable is not set');
-  process.exit(1);
+// Configure JWT secret
+let JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  // If no JWT_SECRET is provided, generate one (for development/testing only)
+  console.warn('⚠️  JWT_SECRET not set in environment. Using fallback secret (NOT SECURE FOR PRODUCTION)');
+  JWT_SECRET = 'default-fallback-secret-key-this-should-be-changed-in-production-12345';
 }
 
 // Configure port
@@ -167,12 +169,9 @@ app.post('/login', async (req, res) => {
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) return res.status(400).json({ message: 'Invalid credentials' });
 
-    const jwtSecret = process.env.JWT_SECRET;
-    if (!jwtSecret || jwtSecret.length < 32) {
-      console.error('❌ JWT_SECRET not properly configured');
-      return res.status(500).json({ message: 'Server configuration error' });
-    }
-    const token = jwt.sign({ id: user.id, role: user.role_id }, jwtSecret, { expiresIn: '1h' });
+    console.log(`📝 Login successful for user: ${username}`);
+    
+    const token = jwt.sign({ id: user.id, role: user.role_id }, JWT_SECRET, { expiresIn: '24h' });
 
     res.json({ 
       token,
