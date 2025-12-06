@@ -2019,6 +2019,50 @@ app.post('/customers/:customerId/loans', async (req, res) => {
   }
 });
 
+// GET ALL LOANS FOR CUSTOMER - GET /customers/:customerId/loans
+app.get('/customers/:customerId/loans', async (req, res) => {
+  try {
+    const { customerId } = req.params;
+
+    const customerIdNum = parseInt(customerId, 10);
+    if (isNaN(customerIdNum)) {
+      return res.status(400).json({ message: 'Invalid customer ID' });
+    }
+
+    // Verify customer exists
+    const customerCheck = await pool.query('SELECT * FROM customers WHERE id = $1', [customerIdNum]);
+    if (customerCheck.rows.length === 0) {
+      return res.status(404).json({ message: 'Customer not found' });
+    }
+
+    // Fetch all loans for this customer
+    const result = await pool.query(
+      'SELECT * FROM loans WHERE customer_id = $1 ORDER BY loan_issued_date DESC',
+      [customerIdNum]
+    );
+
+    // Group loans by status
+    const loans = result.rows.map(loan => ({
+      ...validators.formatLoanResponse(loan),
+      pdf_url: `/loan-pdf/${loan.id}`
+    }));
+
+    const activeLoans = loans.filter(l => l.status === 'active');
+    const redeemedLoans = loans.filter(l => l.status === 'redeemed');
+    const forfeitedLoans = loans.filter(l => l.status === 'forfeited');
+
+    res.json({
+      activeLoans,
+      redeemedLoans,
+      forfeitedLoans,
+      loans // Also include flat array for backwards compatibility
+    });
+  } catch (err) {
+    console.error('Error fetching customer loans:', err);
+    res.status(500).json({ message: 'Error fetching customer loans', error: err.message });
+  }
+});
+
 // SEARCH LOANS FOR CUSTOMER - GET /customers/:customerId/loans/search?query=...
 app.get('/customers/:customerId/loans/search', async (req, res) => {
   try {
@@ -4441,7 +4485,7 @@ process.on('unhandledRejection', (reason, promise) => {
 async function initializeDatabase() {
   try {
     // Check if customers table exists
-    const tableCheck = await pool.query(
+    const customerTableCheck = await pool.query(
       `SELECT EXISTS (
         SELECT FROM information_schema.tables 
         WHERE table_schema = 'public' 
@@ -4449,7 +4493,7 @@ async function initializeDatabase() {
       )`
     );
     
-    if (!tableCheck.rows[0].exists) {
+    if (!customerTableCheck.rows[0].exists) {
       console.log('📋 Creating missing customers table...');
       
       // Create customers table
@@ -4491,6 +4535,39 @@ async function initializeDatabase() {
       `);
       
       console.log('✅ Customers table created successfully');
+    }
+
+    // Check if loans table exists and has customer_id column
+    const loansTableCheck = await pool.query(
+      `SELECT EXISTS (
+        SELECT FROM information_schema.tables 
+        WHERE table_schema = 'public' 
+        AND table_name = 'loans'
+      )`
+    );
+
+    if (loansTableCheck.rows[0].exists) {
+      // Check if customer_id column exists in loans table
+      const columnCheck = await pool.query(
+        `SELECT EXISTS (
+          SELECT FROM information_schema.columns 
+          WHERE table_schema = 'public' 
+          AND table_name = 'loans' 
+          AND column_name = 'customer_id'
+        )`
+      );
+
+      if (!columnCheck.rows[0].exists) {
+        console.log('📋 Adding missing customer_id column to loans table...');
+        try {
+          await pool.query(`
+            ALTER TABLE loans ADD COLUMN customer_id integer REFERENCES customers(id)
+          `);
+          console.log('✅ customer_id column added to loans table');
+        } catch (addColumnErr) {
+          console.warn('⚠️  Could not add customer_id column:', addColumnErr.message);
+        }
+      }
     }
   } catch (err) {
     console.warn('⚠️  Database initialization warning:', err.message);
