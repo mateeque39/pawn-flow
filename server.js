@@ -126,19 +126,21 @@ app.post('/register', async (req, res) => {
     // Hash password and create user
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Default new users to 'user' role (role_id = 2, assuming 1 is admin)
+    // Default new users to 'user' role (role_id = 4 for 'user' role)
+    console.log('📝 Attempting to register user:', username);
     const result = await pool.query(
       `INSERT INTO users (username, password, role_id) 
-       VALUES ($1, $2, 2)
+       VALUES ($1, $2, 4)
        RETURNING id, username, role_id`,
       [username, hashedPassword]
     );
 
-    console.log('✅ New user registered:', { username });
+    console.log('✅ New user registered:', { id: result.rows[0].id, username: result.rows[0].username });
     res.status(201).json({ message: 'User registered successfully', user: result.rows[0] });
   } catch (err) {
-    console.error('Registration error:', err);
-    res.status(500).json({ message: 'Error creating user. Please try again.' });
+    console.error('❌ Registration error:', err.message);
+    console.error('Error details:', err);
+    res.status(500).json({ message: `Error creating user: ${err.message}` });
   }
 });
 
