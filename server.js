@@ -4551,7 +4551,12 @@ async function initializeDatabase() {
       const requiredColumns = [
         { name: 'customer_id', definition: 'customer_id integer REFERENCES customers(id)' },
         { name: 'recurring_fee', definition: 'recurring_fee DECIMAL(10, 2) DEFAULT 0.00' },
-        { name: 'redemption_fee', definition: 'redemption_fee DECIMAL(10, 2) DEFAULT 0.00' }
+        { name: 'redemption_fee', definition: 'redemption_fee DECIMAL(10, 2) DEFAULT 0.00' },
+        { name: 'collateral_image', definition: 'collateral_image text' },
+        { name: 'customer_note', definition: 'customer_note text' },
+        { name: 'item_category', definition: 'item_category character varying(100)' },
+        { name: 'customer_name', definition: 'customer_name character varying(255)' },
+        { name: 'remaining_balance', definition: 'remaining_balance DECIMAL(12, 2) DEFAULT 0.00' }
       ];
 
       for (const col of requiredColumns) {
