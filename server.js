@@ -14,7 +14,16 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 // Configure CORS origins from environment or default to localhost for development
 const corsOrigins = process.env.CORS_ORIGINS 
   ? process.env.CORS_ORIGINS.split(',').map(origin => origin.trim())
-  : ['http://localhost:3000', 'http://localhost:3001', 'http://127.0.0.1:3000', 'http://127.0.0.1:3001', 'http://localhost:5000'];
+  : [
+      'http://localhost:3000',
+      'http://localhost:3001',
+      'http://127.0.0.1:3000',
+      'http://127.0.0.1:3001',
+      'http://localhost:5000',
+      'https://pawn-flow-frontend-production.up.railway.app',
+      'https://pawnflowsoftware.com',
+      'https://www.pawnflowsoftware.com'
+    ];
 
 app.use(cors({
   origin: corsOrigins,
