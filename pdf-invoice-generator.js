@@ -1,10 +1,9 @@
 /**
- * PDF Generation Utility - Backend Version
- * Uses PDFKit with the correct receipt template format
- * Generates professional loan receipts with table layout
+ * PDF Generation - Loan Receipt Template
+ * Uses jsPDF library for professional PDF generation
  */
 
-const PDFDocument = require('pdfkit');
+const jsPDF = require('jspdf').jsPDF;
 
 /**
  * Format currency values
@@ -14,108 +13,82 @@ function formatCurrency(value) {
 }
 
 /**
- * Format date to display format
- */
-function formatDate(date) {
-  if (!date) return 'N/A';
-  try {
-    return new Date(date).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit'
-    });
-  } catch {
-    return date;
-  }
-}
-
-/**
- * Generate a professional loan receipt PDF with correct table format
+ * Generate professional loan receipt PDF
+ * Matches the approved jsPDF template format
  * @param {Object} loan - Loan object from database
  * @returns {Promise<Buffer>} - PDF buffer
  */
 async function generateLoanPDF(loan) {
   return new Promise((resolve, reject) => {
     try {
-      console.log('🔧 PDF Generator - Received loan data:', {
-        id: loan?.id,
-        transaction_number: loan?.transaction_number,
-        first_name: loan?.first_name,
-        loan_amount: loan?.loan_amount
+      console.log('🔧 PDF Generator - Creating jsPDF receipt for loan:', loan?.id);
+
+      // Create PDF document
+      const doc = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4'
       });
 
-      const doc = new PDFDocument({
-        size: 'A4',
-        margin: 12,
-        bufferPages: true
-      });
-
-      let buffers = [];
-      doc.on('data', buffers.push.bind(buffers));
-      doc.on('end', () => {
-        const pdfBuffer = Buffer.concat(buffers);
-        console.log('✅ PDF generated successfully, buffer size:', pdfBuffer.length);
-        resolve(pdfBuffer);
-      });
-      doc.on('error', reject);
-
-      const pageWidth = 595.28;
-      const pageHeight = 841.89;
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
       const margin = 12;
       const contentWidth = pageWidth - 2 * margin;
-      let yPos = margin;
+      let yPosition = margin;
 
       // ===== COMPANY HEADER =====
-      doc.fontSize(14).font('Helvetica-Bold').text('GREEN MOOLAA BRAMPTON', {
-        align: 'center'
-      });
-      yPos += 14;
+      doc.setFontSize(14);
+      doc.setFont(undefined, 'bold');
+      doc.text('GREEN MOOLAA BRAMPTON', pageWidth / 2, yPosition, { align: 'center' });
+      yPosition += 5;
 
-      doc.fontSize(10).font('Helvetica').text('263 QUEEN ST. E. UNIT 4', {
-        align: 'center'
-      });
-      yPos += 10;
-
-      doc.text('BRAMPTON ON L6W 4K6', {
-        align: 'center'
-      });
-      yPos += 10;
-
-      doc.text('(905) 796-7777', {
-        align: 'center'
-      });
-      yPos += 14;
+      doc.setFontSize(10);
+      doc.setFont(undefined, 'normal');
+      doc.text('263 QUEEN ST. E. UNIT 4', pageWidth / 2, yPosition, { align: 'center' });
+      yPosition += 4;
+      doc.text('BRAMPTON ON L6W 4K6', pageWidth / 2, yPosition, { align: 'center' });
+      yPosition += 4;
+      doc.text('(905) 796-7777', pageWidth / 2, yPosition, { align: 'center' });
+      yPosition += 6;
 
       // Dividing line
-      doc.moveTo(margin, yPos).lineTo(pageWidth - margin, yPos).stroke();
-      yPos += 8;
+      doc.setDrawColor(0, 0, 0);
+      doc.line(margin, yPosition, pageWidth - margin, yPosition);
+      yPosition += 5;
 
       // ===== CUSTOMER INFO & TRANSACTION =====
-      doc.fontSize(9).font('Helvetica-Bold').text('[ORIGINAL]', margin, yPos);
-      
+      doc.setFontSize(9);
+      doc.setFont(undefined, 'bold');
+      doc.text('[CUSTOMER]', margin, yPosition);
+
+      doc.setFontSize(8);
       const transactionNumber = loan.transaction_number || loan.transactionNumber || 'N/A';
-      doc.fontSize(8).font('Helvetica').text(`Transaction: ${transactionNumber}`, pageWidth - margin - 80, yPos);
-      yPos += 10;
+      doc.text(`Transaction: ${transactionNumber}`, pageWidth - margin - 40, yPosition);
+      yPosition += 5;
 
       // Customer name
       const firstName = loan.first_name || loan.firstName || '';
       const lastName = loan.last_name || loan.lastName || '';
-      doc.fontSize(9).font('Helvetica').text(`${firstName} ${lastName}`, margin, yPos);
-      yPos += 8;
+      doc.setFontSize(9);
+      doc.setFont(undefined, 'normal');
+      doc.text(`${firstName} ${lastName}`, margin, yPosition);
+      yPosition += 4;
 
       // Loan details
+      doc.setFontSize(8);
       const loanId = loan.id || loan.loanId || 'N/A';
       const loanAmount = loan.loan_amount || loan.loanAmount || '0.00';
       const dueDate = loan.due_date || loan.dueDate || 'N/A';
 
-      doc.fontSize(8).text(`Loan Amount: $${parseFloat(loanAmount).toFixed(2)}`, margin, yPos);
-      yPos += 8;
-
-      doc.text(`Due Date: ${dueDate}`, margin, yPos);
-      yPos += 12;
+      doc.text(`Loan ID: ${loanId}`, margin, yPosition);
+      yPosition += 4;
+      doc.text(`Loan Amount: $${parseFloat(loanAmount).toFixed(2)}`, margin, yPosition);
+      yPosition += 4;
+      doc.text(`Due Date: ${dueDate}`, margin, yPosition);
+      yPosition += 6;
 
       // ===== TABLE HEADER =====
-      const tableTop = yPos;
+      const tableTop = yPosition;
       const colWidths = {
         item: 25,
         category: 35,
@@ -123,59 +96,77 @@ async function generateLoanPDF(loan) {
         amount: 30
       };
 
-      // Header background - gray rect
-      doc.rect(margin, tableTop, contentWidth, 12).fillAndStroke('#CCCCCC', '#000000');
+      // Header background
+      doc.setFillColor(200, 200, 200);
+      doc.rect(margin, tableTop, contentWidth, 7, 'F');
 
-      // Header text
-      doc.fontSize(9).font('Helvetica-Bold').fillColor('#000000');
-      doc.text('ITEM', margin + 2, tableTop + 2);
-      doc.text('CATEGORY', margin + colWidths.item + 2, tableTop + 2);
-      doc.text('DESCRIPTION', margin + colWidths.item + colWidths.category + 2, tableTop + 2);
-      doc.text('AMOUNT', margin + colWidths.item + colWidths.category + colWidths.description + 2, tableTop + 2);
+      doc.setFont(undefined, 'bold');
+      doc.setFontSize(9);
+      doc.text('ITEM', margin + 2, tableTop + 5);
+      doc.text('CATEGORY', margin + colWidths.item + 2, tableTop + 5);
+      doc.text('DESCRIPTION', margin + colWidths.item + colWidths.category + 2, tableTop + 5);
+      doc.text('AMOUNT', margin + colWidths.item + colWidths.category + colWidths.description + 2, tableTop + 5);
 
-      yPos = tableTop + 16;
+      // Table border
+      doc.setDrawColor(0, 0, 0);
+      doc.rect(margin, tableTop, contentWidth, 7);
+      doc.line(margin + colWidths.item, tableTop, margin + colWidths.item, tableTop + 7);
+      doc.line(margin + colWidths.item + colWidths.category, tableTop, margin + colWidths.item + colWidths.category, tableTop + 7);
+      doc.line(margin + colWidths.item + colWidths.category + colWidths.description, tableTop, margin + colWidths.item + colWidths.category + colWidths.description, tableTop + 7);
+
+      yPosition = tableTop + 8;
 
       // ===== TABLE CONTENT =====
-      doc.fontSize(8).font('Helvetica');
+      doc.setFont(undefined, 'normal');
+      doc.setFontSize(8);
+      doc.text('LN-' + loanId, margin + 2, yPosition);
 
+      // Use actual collateral/item data from loan
       const itemCategory = loan.item_category || loan.itemCategory || 'Loan';
       const itemDescription = loan.collateral_description || loan.collateralDescription || loan.item_description || loan.itemDescription || 'Pawn Loan Agreement';
 
-      doc.text('LN-' + loanId, margin + 2, yPos);
-      doc.text(itemCategory, margin + colWidths.item + 2, yPos);
-      doc.text(itemDescription, margin + colWidths.item + colWidths.category + 2, yPos);
+      doc.text(itemCategory, margin + colWidths.item + 2, yPosition);
+      doc.text(itemDescription, margin + colWidths.item + colWidths.category + 2, yPosition);
 
       const totalPayable = loan.total_payable_amount || loan.totalPayableAmount || loanAmount;
-      doc.text(formatCurrency(totalPayable), margin + colWidths.item + colWidths.category + colWidths.description + 2, yPos);
+      doc.text(formatCurrency(totalPayable), margin + colWidths.item + colWidths.category + colWidths.description + 2, yPosition);
 
-      yPos += 12;
+      yPosition += 8;
 
       // ===== CHARGES DUE =====
-      doc.fontSize(8).text('CHARGES ON THIS ACCOUNT ARE DUE ON OR BEFORE', margin + colWidths.item + colWidths.category + 5, yPos);
-      doc.text(dueDate, pageWidth - margin - 50, yPos);
-      yPos += 10;
+      doc.setFont(undefined, 'normal');
+      doc.setFontSize(8);
+      doc.text('CHARGES ON THIS ACCOUNT ARE DUE ON OR BEFORE', margin + colWidths.item + colWidths.category + 5, yPosition);
+      doc.text(dueDate, pageWidth - margin - 40, yPosition);
+      yPosition += 6;
 
       // ===== TOTAL =====
-      doc.fontSize(9).font('Helvetica-Bold').text('TOTAL', margin + colWidths.item + colWidths.category + 5, yPos);
-      doc.text(formatCurrency(totalPayable), pageWidth - margin - 50, yPos);
-      yPos += 14;
+      doc.setFont(undefined, 'bold');
+      doc.setFontSize(9);
+      doc.text('TOTAL', margin + colWidths.item + colWidths.category + 5, yPosition);
+      doc.text(formatCurrency(totalPayable), pageWidth - margin - 40, yPosition);
+      yPosition += 8;
 
       // ===== LEGAL TERMS =====
-      doc.fontSize(7).font('Helvetica');
-      
+      doc.setFont(undefined, 'normal');
+      doc.setFontSize(7);
+
       const legalText = `I, the undersigned (herein 'the seller'), do hereby loan the item(s) above amount, the receipt of which is acknowledge by the undersigned (herein 'the Seller'), said Seller does sell, transfer, and assign all rights, title and interest in the described property to GRN. The seller declares that the above is their own personal property free and clear of all claims and liens whatsoever and that they have the full power to sell, transfer and deliver said property as provided herein.`;
 
-      doc.text(legalText, margin + 2, yPos, {
-        width: contentWidth - 4,
-        align: 'left',
-        lineGap: 2
-      });
+      const splitText = doc.splitTextToSize(legalText, contentWidth - 4);
+      doc.text(splitText, margin + 2, yPosition);
 
       // ===== FOOTER =====
-      doc.moveTo(margin, pageHeight - 15).lineTo(pageWidth - margin, pageHeight - 15).stroke();
-      doc.fontSize(7).text('Pawn-GR-02-CAN', pageWidth - margin - 35, pageHeight - 10);
+      doc.setDrawColor(0, 0, 0);
+      doc.line(margin, pageHeight - 10, pageWidth - margin, pageHeight - 10);
+      doc.setFontSize(7);
+      doc.text('Pawn-GR-02-CAN', pageWidth - margin - 30, pageHeight - 5);
 
-      doc.end();
+      // Output as buffer
+      const pdfBuffer = Buffer.from(doc.output('arraybuffer'));
+      
+      console.log('✅ PDF generated successfully, buffer size:', pdfBuffer.length);
+      resolve(pdfBuffer);
     } catch (error) {
       console.error('❌ PDF Generation Error:', error);
       reject(error);
