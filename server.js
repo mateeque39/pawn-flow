@@ -4484,7 +4484,11 @@ process.on('unhandledRejection', (reason, promise) => {
 // Initialize database schema if needed
 async function initializeDatabase() {
   try {
-    // Check if customers table exists
+    console.log('📋 Starting comprehensive database initialization...');
+
+    // ====================
+    // 1. CUSTOMERS TABLE
+    // ====================
     const customerTableCheck = await pool.query(
       `SELECT EXISTS (
         SELECT FROM information_schema.tables 
@@ -4496,7 +4500,6 @@ async function initializeDatabase() {
     if (!customerTableCheck.rows[0].exists) {
       console.log('📋 Creating missing customers table...');
       
-      // Create customers table
       await pool.query(`
         CREATE SEQUENCE IF NOT EXISTS customers_id_seq AS integer START WITH 1 INCREMENT BY 1;
         
@@ -4537,7 +4540,9 @@ async function initializeDatabase() {
       console.log('✅ Customers table created successfully');
     }
 
-    // Check if loans table exists and has customer_id column
+    // ====================
+    // 2. LOANS TABLE - Add Missing Columns
+    // ====================
     const loansTableCheck = await pool.query(
       `SELECT EXISTS (
         SELECT FROM information_schema.tables 
@@ -4547,16 +4552,14 @@ async function initializeDatabase() {
     );
 
     if (loansTableCheck.rows[0].exists) {
+      console.log('📋 Checking loans table for missing columns...');
+      
       // List of columns to ensure exist in loans table
       const requiredColumns = [
         { name: 'customer_id', definition: 'customer_id integer REFERENCES customers(id)' },
         { name: 'recurring_fee', definition: 'recurring_fee DECIMAL(10, 2) DEFAULT 0.00' },
         { name: 'redemption_fee', definition: 'redemption_fee DECIMAL(10, 2) DEFAULT 0.00' },
-        { name: 'collateral_image', definition: 'collateral_image text' },
-        { name: 'customer_note', definition: 'customer_note text' },
-        { name: 'item_category', definition: 'item_category character varying(100)' },
-        { name: 'customer_name', definition: 'customer_name character varying(255)' },
-        { name: 'remaining_balance', definition: 'remaining_balance DECIMAL(12, 2) DEFAULT 0.00' }
+        { name: 'collateral_image', definition: 'collateral_image text' }
       ];
 
       for (const col of requiredColumns) {
@@ -4572,15 +4575,79 @@ async function initializeDatabase() {
           );
 
           if (!columnCheck.rows[0].exists) {
-            console.log(`📋 Adding missing ${col.name} column to loans table...`);
+            console.log(`  📝 Adding column: ${col.name}`);
             await pool.query(`ALTER TABLE loans ADD COLUMN ${col.definition}`);
-            console.log(`✅ ${col.name} column added to loans table`);
+            console.log(`  ✅ Column added: ${col.name}`);
+          } else {
+            console.log(`  ✓ Column exists: ${col.name}`);
           }
         } catch (addColumnErr) {
-          console.warn(`⚠️  Could not add ${col.name} column:`, addColumnErr.message);
+          console.warn(`  ⚠️  Could not add ${col.name} column:`, addColumnErr.message);
         }
       }
     }
+
+    // ====================
+    // 3. USER_ROLES TABLE - Ensure Default Roles Exist
+    // ====================
+    try {
+      const roleCheckResult = await pool.query(
+        `SELECT COUNT(*) as count FROM user_roles`
+      );
+      
+      if (roleCheckResult.rows[0].count === 0) {
+        console.log('📋 Inserting default user roles...');
+        await pool.query(`
+          INSERT INTO user_roles (role_name) VALUES 
+          ('admin'),
+          ('staff'),
+          ('manager'),
+          ('user')
+          ON CONFLICT (role_name) DO NOTHING
+        `);
+        console.log('✅ Default user roles inserted');
+      } else {
+        console.log(`✓ User roles already exist (${roleCheckResult.rows[0].count} roles)`);
+      }
+    } catch (rolesErr) {
+      console.warn('⚠️  Could not ensure user roles:', rolesErr.message);
+    }
+
+    // ====================
+    // 4. Additional Tables - Check & Log Status
+    // ====================
+    const tablesToCheck = [
+      'payment_history',
+      'payments',
+      'redemption_history',
+      'forfeiture_history',
+      'shift_management',
+      'shifts',
+      'redeem_history'
+    ];
+
+    for (const tableName of tablesToCheck) {
+      try {
+        const tableCheck = await pool.query(
+          `SELECT EXISTS (
+            SELECT FROM information_schema.tables 
+            WHERE table_schema = 'public' 
+            AND table_name = $1
+          )`,
+          [tableName]
+        );
+
+        if (tableCheck.rows[0].exists) {
+          console.log(`✓ Table exists: ${tableName}`);
+        } else {
+          console.warn(`⚠️  Missing table: ${tableName}`);
+        }
+      } catch (err) {
+        console.warn(`⚠️  Error checking table ${tableName}:`, err.message);
+      }
+    }
+
+    console.log('✅ Database initialization complete');
   } catch (err) {
     console.warn('⚠️  Database initialization warning:', err.message);
     // Don't exit - continue startup even if initialization fails
