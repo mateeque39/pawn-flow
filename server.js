@@ -4423,14 +4423,25 @@ app.get('/api/loans/:loanId/receipt', authenticateToken, async (req, res) => {
     console.log('📄 Generating receipt PDF for loan:', {
       id: loan.id,
       transaction_number: loan.transaction_number,
-      customer_name: `${loan.first_name} ${loan.last_name}`
+      customer_name: `${loan.first_name || ''} ${loan.last_name || ''}`,
+      loan_amount: loan.loan_amount
     });
 
     // Generate PDF using existing PDF generator
-    const pdfBuffer = await generateLoanPDF(loan);
+    let pdfBuffer;
+    try {
+      pdfBuffer = await generateLoanPDF(loan);
+    } catch (pdfError) {
+      console.error('❌ PDF generation failed:', pdfError.message);
+      return res.status(500).json({ 
+        message: 'Failed to generate PDF',
+        error: process.env.NODE_ENV === 'development' ? pdfError.message : 'An error occurred',
+        loanId: loan.id
+      });
+    }
 
-    if (!pdfBuffer) {
-      return res.status(500).json({ message: 'Failed to generate PDF' });
+    if (!pdfBuffer || pdfBuffer.length === 0) {
+      return res.status(500).json({ message: 'Failed to generate PDF - empty buffer' });
     }
 
     // Send PDF as download
@@ -4444,7 +4455,8 @@ app.get('/api/loans/:loanId/receipt', authenticateToken, async (req, res) => {
 
     console.log('✅ Receipt PDF sent successfully for loan:', loan.id);
   } catch (err) {
-    console.error('❌ Error generating receipt PDF:', err);
+    console.error('❌ Error generating receipt PDF:', err.message);
+    console.error('Stack:', err.stack);
     res.status(500).json({ 
       message: 'Error generating receipt PDF',
       error: process.env.NODE_ENV === 'development' ? err.message : 'An error occurred'

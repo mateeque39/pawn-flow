@@ -25,14 +25,19 @@ async function generateLoanPDF(loan) {
       
       // Validate loan object
       if (!loan) {
-        throw new Error('Loan object is required');
+        reject(new Error('Loan object is required'));
+        return;
       }
       if (!loan.id) {
-        throw new Error('Loan ID is required');
+        reject(new Error('Loan ID is required'));
+        return;
       }
-      // Loan amount is required for PDF
-      if (!loan.loan_amount && !loan.loanAmount && loan.loan_amount !== 0) {
-        throw new Error('Loan amount is required');
+      
+      // Check loan amount - allow 0 but not undefined/null
+      const loanAmount = loan.loan_amount || loan.loanAmount;
+      if (loanAmount === null || loanAmount === undefined) {
+        reject(new Error('Loan amount is required'));
+        return;
       }
 
       // Create PDF document
@@ -90,7 +95,7 @@ async function generateLoanPDF(loan) {
       // Loan details
       doc.setFontSize(8);
       const loanId = loan.id || loan.loanId || 'N/A';
-      const loanAmount = loan.loan_amount || loan.loanAmount || '0.00';
+      // loanAmount already extracted in validation
       const dueDate = loan.due_date || loan.dueDate || 'N/A';
 
       doc.text(`Loan ID: ${loanId}`, margin, yPosition);
@@ -181,7 +186,8 @@ async function generateLoanPDF(loan) {
       console.log('✅ PDF generated successfully, buffer size:', pdfBuffer.length);
       resolve(pdfBuffer);
     } catch (error) {
-      console.error('❌ PDF Generation Error:', error);
+      console.error('❌ PDF Generation Error:', error.message);
+      console.error('Loan data:', { id: loan?.id, hasAmount: !!loan?.loan_amount });
       reject(error);
     }
   });
