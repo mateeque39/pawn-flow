@@ -39,6 +39,7 @@ if (!JWT_SECRET) {
   console.warn('⚠️  JWT_SECRET not set in environment. Using fallback secret (NOT SECURE FOR PRODUCTION)');
   JWT_SECRET = 'default-fallback-secret-key-this-should-be-changed-in-production-12345';
 }
+console.log(`✅ JWT_SECRET configured: ${JWT_SECRET.length} characters`);
 
 // Configure port
 const PORT = process.env.PORT || 5000;
@@ -3311,14 +3312,14 @@ const authenticateToken = (req, res, next) => {
   }
 
   try {
-    const jwtSecret = process.env.JWT_SECRET;
-    if (!jwtSecret || jwtSecret.length < 32) {
+    // Use the configured JWT_SECRET from app startup, not environment variable
+    if (!JWT_SECRET || JWT_SECRET.length < 32) {
       console.error('❌ JWT_SECRET not properly configured');
       return res.status(500).json({ message: 'Server configuration error' });
     }
-    const decoded = jwt.verify(token, jwtSecret);
+    const decoded = jwt.verify(token, JWT_SECRET);
     req.user = decoded;
-    console.log(`✅ Token verified for user ID: ${decoded.id}`);
+    console.log(`✅ Token verified for user ID: ${decoded.user_id || decoded.id}`);
     next();
   } catch (err) {
     console.warn('⚠️  Invalid token:', err.message);
