@@ -98,14 +98,18 @@ async function generateLoanPDF(loan) {
 
     // Loan details
     const loanId = loan.id || loan.loanId || 'N/A';
-    const dueDate = loan.due_date || loan.dueDate || 'N/A';
+    let dueDate = loan.due_date || loan.dueDate || 'N/A';
+    // Convert Date object to string if needed
+    if (dueDate instanceof Date) {
+      dueDate = dueDate.toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' });
+    }
     
     doc.setFontSize(9);
     doc.text(`Loan ID: ${loanId}`, margin, y);
     y += 5;
     doc.text(`Loan Amount: $${parseFloat(loanAmount).toFixed(2)}`, margin, y);
     y += 5;
-    doc.text(`Due Date: ${dueDate}`, margin, y);
+    doc.text(`Due Date: ${String(dueDate)}`, margin, y);
     y += 8;
 
     // ===== TABLE HEADER =====
@@ -134,7 +138,7 @@ async function generateLoanPDF(loan) {
     // ===== CHARGES DUE =====
     doc.setFontSize(9).setFont(undefined, 'normal');
     doc.text('CHARGES ON THIS ACCOUNT ARE DUE ON OR BEFORE', margin, y);
-    doc.text(dueDate, pageWidth - margin - 30, y);
+    doc.text(String(dueDate), pageWidth - margin - 30, y);
     y += 8;
 
     // ===== TOTAL =====
