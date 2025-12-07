@@ -202,31 +202,3 @@ module.exports = {
   generateLoanPDF,
   savePDFToFile
 };
-
-/**
- * Save PDF to file system (optional)
- */
-async function savePDFToFile(loan, outputDir = './pdfs') {
-  try {
-    if (!fs.existsSync(outputDir)) {
-      fs.mkdirSync(outputDir, { recursive: true });
-    }
-
-    const filename = `loan_${loan.id}_${loan.transaction_number || 'unknown'}.pdf`;
-    const filepath = `${outputDir}/${filename}`;
-
-    const pdfBuffer = await generateLoanPDF(loan);
-    fs.writeFileSync(filepath, pdfBuffer);
-
-    console.log(`✅ PDF saved successfully: ${filepath}`);
-    return filepath;
-  } catch (error) {
-    console.error('❌ Error saving PDF to file:', error);
-    throw error;
-  }
-}
-
-module.exports = {
-  generateLoanPDF,
-  savePDFToFile
-};
