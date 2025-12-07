@@ -21,16 +21,24 @@ function formatCurrency(value) {
 async function generateLoanPDF(loan) {
   try {
     console.log('🔧 PDF Generator - Creating jsPDF receipt for loan:', loan?.id);
-    console.log('   Loan object keys:', Object.keys(loan).join(', '));
+    console.log('   Loan object keys:', Object.keys(loan || {}).join(', '));
+    console.log('   jsPDF version check:', typeof jsPDF);
     
     // Validate loan object
-    if (!loan) throw new Error('Loan object is required');
-    if (!loan.id) throw new Error('Loan ID is required');
+    if (!loan) {
+      console.error('   ❌ Loan object is null/undefined');
+      throw new Error('Loan object is required');
+    }
+    if (!loan.id) {
+      console.error('   ❌ Loan ID missing from loan object');
+      throw new Error('Loan ID is required');
+    }
     
     // Extract loan amount
     const loanAmount = loan.loan_amount || loan.loanAmount || 0;
-    console.log('   Extracted loanAmount:', loanAmount);
+    console.log('   Extracted loanAmount:', loanAmount, 'type:', typeof loanAmount);
     if (loanAmount === null || loanAmount === undefined || loanAmount === '') {
+      console.error('   ❌ Loan amount validation failed:', loanAmount);
       throw new Error('Loan amount is required and must be a valid number');
     }
 
@@ -38,10 +46,13 @@ async function generateLoanPDF(loan) {
     let doc;
     try {
       console.log('   Creating jsPDF document...');
+      console.log('   jsPDF constructor available:', typeof jsPDF);
       doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-      console.log('   ✓ jsPDF document created');
+      console.log('   ✓ jsPDF document created successfully');
     } catch (docErr) {
-      console.error('   ❌ jsPDF creation error:', docErr);
+      console.error('   ❌ jsPDF creation failed:', docErr.message);
+      console.error('   ❌ jsPDF creation error type:', docErr.name);
+      console.error('   ❌ jsPDF full error:', docErr);
       throw new Error(`Failed to create PDF document: ${docErr.message}`);
     }
 
@@ -152,15 +163,22 @@ async function generateLoanPDF(loan) {
       console.log('   Converting PDF to buffer...');
       pdfOutput = doc.output('arraybuffer');
       console.log('   pdfOutput type:', typeof pdfOutput, 'is ArrayBuffer:', pdfOutput instanceof ArrayBuffer);
+      if (!pdfOutput) {
+        throw new Error('doc.output() returned null/undefined');
+      }
       pdfBuffer = Buffer.from(pdfOutput);
       console.log('   ✓ PDF converted to buffer, size:', pdfBuffer.length, 'bytes');
     } catch (bufErr) {
       console.error('   ❌ Buffer conversion error:', bufErr.message);
+      console.error('   ❌ Buffer conversion error type:', bufErr.name);
+      console.error('   ❌ pdfOutput value:', pdfOutput);
+      console.error('   ❌ Full error:', bufErr);
       throw new Error(`Failed to convert PDF to buffer: ${bufErr.message}`);
     }
     
     if (!pdfBuffer || pdfBuffer.length === 0) {
-      console.error('   ❌ PDF buffer is empty');
+      console.error('   ❌ PDF buffer is empty or invalid');
+      console.error('   ❌ pdfBuffer:', pdfBuffer);
       throw new Error('PDF buffer is empty - PDF generation failed');
     }
     
@@ -168,8 +186,10 @@ async function generateLoanPDF(loan) {
     return pdfBuffer;
   } catch (error) {
     console.error('❌ PDF Generation Error:', error.message);
-    console.error('Stack:', error.stack);
-    console.error('Loan object:', { id: loan?.id, loan_amount: loan?.loan_amount, loanAmount: loan?.loanAmount });
+    console.error('   Error type:', error.name);
+    console.error('   Stack:', error.stack);
+    console.error('   Loan ID:', loan?.id);
+    console.error('   Loan amount:', loan?.loan_amount);
     throw error;
   }
 }
