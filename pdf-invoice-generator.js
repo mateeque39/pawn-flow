@@ -21,6 +21,7 @@ function formatCurrency(value) {
 async function generateLoanPDF(loan) {
   try {
     console.log('🔧 PDF Generator - Creating jsPDF receipt for loan:', loan?.id);
+    console.log('   Loan object keys:', Object.keys(loan).join(', '));
     
     // Validate loan object
     if (!loan) throw new Error('Loan object is required');
@@ -28,6 +29,7 @@ async function generateLoanPDF(loan) {
     
     // Extract loan amount
     const loanAmount = loan.loan_amount || loan.loanAmount || 0;
+    console.log('   Extracted loanAmount:', loanAmount);
     if (loanAmount === null || loanAmount === undefined || loanAmount === '') {
       throw new Error('Loan amount is required and must be a valid number');
     }
@@ -35,10 +37,11 @@ async function generateLoanPDF(loan) {
     // Create PDF document using jsPDF (which IS in package.json)
     let doc;
     try {
-      console.log('Creating jsPDF document...');
+      console.log('   Creating jsPDF document...');
       doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-      console.log('✓ jsPDF document created');
+      console.log('   ✓ jsPDF document created');
     } catch (docErr) {
+      console.error('   ❌ jsPDF creation error:', docErr);
       throw new Error(`Failed to create PDF document: ${docErr.message}`);
     }
 
@@ -146,15 +149,18 @@ async function generateLoanPDF(loan) {
     let pdfOutput;
     let pdfBuffer;
     try {
-      console.log('Converting PDF to buffer...');
+      console.log('   Converting PDF to buffer...');
       pdfOutput = doc.output('arraybuffer');
+      console.log('   pdfOutput type:', typeof pdfOutput, 'is ArrayBuffer:', pdfOutput instanceof ArrayBuffer);
       pdfBuffer = Buffer.from(pdfOutput);
-      console.log('✓ PDF converted to buffer');
+      console.log('   ✓ PDF converted to buffer, size:', pdfBuffer.length, 'bytes');
     } catch (bufErr) {
+      console.error('   ❌ Buffer conversion error:', bufErr.message);
       throw new Error(`Failed to convert PDF to buffer: ${bufErr.message}`);
     }
     
     if (!pdfBuffer || pdfBuffer.length === 0) {
+      console.error('   ❌ PDF buffer is empty');
       throw new Error('PDF buffer is empty - PDF generation failed');
     }
     
