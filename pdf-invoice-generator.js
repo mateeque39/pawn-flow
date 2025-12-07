@@ -30,6 +30,10 @@ async function generateLoanPDF(loan) {
       if (!loan.id) {
         throw new Error('Loan ID is required');
       }
+      // Loan amount is required for PDF
+      if (!loan.loan_amount && !loan.loanAmount && loan.loan_amount !== 0) {
+        throw new Error('Loan amount is required');
+      }
 
       // Create PDF document
       const doc = new jsPDF({
@@ -75,11 +79,12 @@ async function generateLoanPDF(loan) {
       yPosition += 5;
 
       // Customer name
-      const firstName = loan.first_name || loan.firstName || '';
+      const firstName = loan.first_name || loan.firstName || 'Customer';
       const lastName = loan.last_name || loan.lastName || '';
       doc.setFontSize(9);
       doc.setFont(undefined, 'normal');
-      doc.text(`${firstName} ${lastName}`, margin, yPosition);
+      const fullName = `${firstName} ${lastName}`.trim();
+      doc.text(fullName || 'N/A', margin, yPosition);
       yPosition += 4;
 
       // Loan details
