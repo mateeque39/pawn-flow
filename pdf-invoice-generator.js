@@ -74,10 +74,11 @@ async function generateLoanPDF(loan) {
     // ===== LOAN INFORMATION SECTION =====
     doc.setFontSize(10).setFont(undefined, 'bold');
     
-    // Extract data
+    // Extract data - use customer_name field if available (for new loans), otherwise use first/last name from JOIN
     const firstName = String(loan.first_name || '').trim();
     const lastName = String(loan.last_name || '').trim();
-    const fullName = firstName || lastName ? `${firstName} ${lastName}`.trim() : 'N/A';
+    const directCustomerName = String(loan.customer_name || '').trim();
+    const fullName = directCustomerName || (firstName || lastName ? `${firstName} ${lastName}`.trim() : 'N/A');
     const transactionNumber = String(loan.transaction_number || 'N/A').trim();
     const loanId = loan.id || 'N/A';
     const status = String(loan.status || 'N/A').trim().toUpperCase();
