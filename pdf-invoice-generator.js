@@ -134,8 +134,14 @@ async function generateLoanPDF(loan) {
     doc.setFontSize(7);
     doc.text('Pawn-GR-02-CAN', pageWidth - margin - 25, pageHeight - 5);
 
-    // Return as buffer
-    const pdfBuffer = Buffer.from(doc.output('arraybuffer'));
+    // Return as buffer - use output() which handles the rendering
+    const pdfOutput = doc.output('arraybuffer');
+    const pdfBuffer = Buffer.from(pdfOutput);
+    
+    if (!pdfBuffer || pdfBuffer.length === 0) {
+      throw new Error('PDF buffer is empty - PDF generation failed');
+    }
+    
     console.log('✅ PDF generated successfully, buffer size:', pdfBuffer.length);
     return pdfBuffer;
   } catch (error) {
