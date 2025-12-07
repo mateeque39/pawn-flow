@@ -22,6 +22,14 @@ async function generateLoanPDF(loan) {
   return new Promise((resolve, reject) => {
     try {
       console.log('🔧 PDF Generator - Creating jsPDF receipt for loan:', loan?.id);
+      
+      // Validate loan object
+      if (!loan) {
+        throw new Error('Loan object is required');
+      }
+      if (!loan.id) {
+        throw new Error('Loan ID is required');
+      }
 
       // Create PDF document
       const doc = new jsPDF({
