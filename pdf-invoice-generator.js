@@ -33,7 +33,15 @@ async function generateLoanPDF(loan) {
     }
 
     // Create PDF document using jsPDF (which IS in package.json)
-    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    let doc;
+    try {
+      console.log('Creating jsPDF document...');
+      doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      console.log('✓ jsPDF document created');
+    } catch (docErr) {
+      throw new Error(`Failed to create PDF document: ${docErr.message}`);
+    }
+
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
     const margin = 15;
@@ -135,8 +143,16 @@ async function generateLoanPDF(loan) {
     doc.text('Pawn-GR-02-CAN', pageWidth - margin - 25, pageHeight - 5);
 
     // Return as buffer - use output() which handles the rendering
-    const pdfOutput = doc.output('arraybuffer');
-    const pdfBuffer = Buffer.from(pdfOutput);
+    let pdfOutput;
+    let pdfBuffer;
+    try {
+      console.log('Converting PDF to buffer...');
+      pdfOutput = doc.output('arraybuffer');
+      pdfBuffer = Buffer.from(pdfOutput);
+      console.log('✓ PDF converted to buffer');
+    } catch (bufErr) {
+      throw new Error(`Failed to convert PDF to buffer: ${bufErr.message}`);
+    }
     
     if (!pdfBuffer || pdfBuffer.length === 0) {
       throw new Error('PDF buffer is empty - PDF generation failed');
