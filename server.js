@@ -4409,9 +4409,15 @@ app.get('/api/loans/:loanId/receipt', authenticateToken, async (req, res) => {
       return res.status(400).json({ message: 'Invalid loan ID format' });
     }
 
-    // Fetch loan details from database
+    // Fetch loan details from database with customer information
     const loanResult = await pool.query(
-      `SELECT * FROM loans WHERE id = $1`,
+      `SELECT 
+        l.*,
+        c.first_name,
+        c.last_name
+       FROM loans l
+       LEFT JOIN customers c ON l.customer_id = c.id
+       WHERE l.id = $1`,
       [parsedLoanId]
     );
 

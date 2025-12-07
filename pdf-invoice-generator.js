@@ -85,6 +85,11 @@ async function generateLoanPDF(loan) {
     // Right: Transaction number
     doc.setFontSize(11).setFont(undefined, 'bold');
     doc.text('[CUSTOMER]', margin, y);
+    
+    // Transaction number on the right at the top
+    const transactionNumber = String(loan.transaction_number || 'N/A').trim();
+    doc.setFontSize(9).setFont(undefined, 'normal');
+    doc.text(`Transaction: ${transactionNumber}`, pageWidth - margin, y, { align: 'right' });
     y += 7;
 
     // Customer name - extract from database fields
@@ -100,7 +105,6 @@ async function generateLoanPDF(loan) {
 
     // Loan details
     const loanId = loan.id || 'N/A';
-    const transactionNumber = String(loan.transaction_number || 'N/A').trim();
     
     doc.setFontSize(9);
     doc.text(`Loan ID: ${loanId}`, margin, y);
@@ -124,12 +128,6 @@ async function generateLoanPDF(loan) {
       }
     }
     doc.text(`Due Date: ${String(dueDate)}`, margin, y);
-    
-    // Transaction number on the right
-    const transactionY = margin + 15; // Positioned at top right near customer section
-    doc.setFontSize(9).setFont(undefined, 'normal');
-    doc.text(`Transaction: ${transactionNumber}`, pageWidth - margin - 50, transactionY, { align: 'right' });
-    
     y += 8;
 
     // ===== TABLE HEADER =====
