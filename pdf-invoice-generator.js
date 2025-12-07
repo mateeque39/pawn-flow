@@ -19,178 +19,132 @@ function formatCurrency(value) {
  * @returns {Promise<Buffer>} - PDF buffer
  */
 async function generateLoanPDF(loan) {
-  return new Promise((resolve, reject) => {
-    try {
-      console.log('🔧 PDF Generator - Creating jsPDF receipt for loan:', loan?.id);
-      
-      // Validate loan object
-      if (!loan) {
-        reject(new Error('Loan object is required'));
-        return;
-      }
-      if (!loan.id) {
-        reject(new Error('Loan ID is required'));
-        return;
-      }
-      
-      // Check loan amount - allow 0 but not undefined/null (declare at function scope)
-      let loanAmount = loan.loan_amount || loan.loanAmount;
-      if (loanAmount === null || loanAmount === undefined) {
-        reject(new Error('Loan amount is required'));
-        return;
-      }
+  try {
+    console.log('🔧 PDF Generator - Creating jsPDF receipt for loan:', loan?.id);
+    
+    // Validate loan object
+    if (!loan) throw new Error('Loan object is required');
+    if (!loan.id) throw new Error('Loan ID is required');
+    
+    // Extract loan amount
+    const loanAmount = loan.loan_amount || loan.loanAmount || 0;
+    if (loanAmount === null || loanAmount === undefined || loanAmount === '') {
+      throw new Error('Loan amount is required and must be a valid number');
+    }
 
-      // Create PDF document
-      const doc = new jsPDF({
-        orientation: 'portrait',
-        unit: 'mm',
-        format: 'a4'
+    // Create PDF document using PDFKit (instead of jsPDF for better control)
+    const PDFDocument = require('pdfkit');
+    const doc = new PDFDocument();
+    
+    // Collect PDF data
+    const chunks = [];
+    doc.on('data', chunk => chunks.push(chunk));
+    
+    return new Promise((resolve, reject) => {
+      doc.on('end', () => {
+        const pdfBuffer = Buffer.concat(chunks);
+        console.log('✅ PDF generated successfully, buffer size:', pdfBuffer.length);
+        resolve(pdfBuffer);
+      });
+      
+      doc.on('error', err => {
+        console.error('❌ PDF Generation Error:', err.message);
+        reject(err);
       });
 
-      const pageWidth = doc.internal.pageSize.getWidth();
-      const pageHeight = doc.internal.pageSize.getHeight();
-      const margin = 12;
-      const contentWidth = pageWidth - 2 * margin;
-      let yPosition = margin;
+      try {
+        const pageWidth = 595;
+        const pageHeight = 842;
+        const margin = 40;
+        let y = margin;
 
-      // ===== COMPANY HEADER =====
-      doc.setFontSize(14);
-      doc.setFont(undefined, 'bold');
-      doc.text('GREEN MOOLAA BRAMPTON', pageWidth / 2, yPosition, { align: 'center' });
-      yPosition += 5;
+        // ===== COMPANY HEADER =====
+        doc.fontSize(16).font('Helvetica-Bold').text('GREEN MOOLAA BRAMPTON', { align: 'center' });
+        y += 20;
+        doc.fontSize(10).font('Helvetica').text('263 QUEEN ST. E. UNIT 4', { align: 'center' });
+        doc.text('BRAMPTON ON L6W 4K6', { align: 'center' });
+        doc.text('(905) 796-7777', { align: 'center' });
+        y += 15;
 
-      doc.setFontSize(10);
-      doc.setFont(undefined, 'normal');
-      doc.text('263 QUEEN ST. E. UNIT 4', pageWidth / 2, yPosition, { align: 'center' });
-      yPosition += 4;
-      doc.text('BRAMPTON ON L6W 4K6', pageWidth / 2, yPosition, { align: 'center' });
-      yPosition += 4;
-      doc.text('(905) 796-7777', pageWidth / 2, yPosition, { align: 'center' });
-      yPosition += 6;
+        // Horizontal line
+        doc.moveTo(margin, y).lineTo(pageWidth - margin, y).stroke();
+        y += 15;
 
-      // Dividing line
-      doc.setDrawColor(0, 0, 0);
-      doc.line(margin, yPosition, pageWidth - margin, yPosition);
-      yPosition += 5;
+        // ===== CUSTOMER INFO =====
+        doc.fontSize(10).font('Helvetica-Bold').text('[CUSTOMER]', margin, y);
+        const transactionNumber = loan.transaction_number || loan.transactionNumber || 'N/A';
+        doc.fontSize(9).font('Helvetica').text(`Transaction: ${transactionNumber}`, pageWidth - margin - 100, y);
+        y += 15;
 
-      // ===== CUSTOMER INFO & TRANSACTION =====
-      doc.setFontSize(9);
-      doc.setFont(undefined, 'bold');
-      doc.text('[CUSTOMER]', margin, yPosition);
+        const firstName = loan.first_name || loan.firstName || 'Customer';
+        const lastName = loan.last_name || loan.lastName || '';
+        const fullName = `${firstName} ${lastName}`.trim();
+        doc.fontSize(10).font('Helvetica').text(fullName || 'N/A', margin);
+        y += 12;
 
-      doc.setFontSize(8);
-      const transactionNumber = loan.transaction_number || loan.transactionNumber || 'N/A';
-      doc.text(`Transaction: ${transactionNumber}`, pageWidth - margin - 40, yPosition);
-      yPosition += 5;
+        // Loan details
+        const loanId = loan.id || loan.loanId || 'N/A';
+        const dueDate = loan.due_date || loan.dueDate || 'N/A';
+        
+        doc.fontSize(9).font('Helvetica').text(`Loan ID: ${loanId}`, margin);
+        doc.text(`Loan Amount: $${parseFloat(loanAmount).toFixed(2)}`, margin);
+        doc.text(`Due Date: ${dueDate}`, margin);
+        y += 20;
 
-      // Customer name
-      const firstName = loan.first_name || loan.firstName || 'Customer';
-      const lastName = loan.last_name || loan.lastName || '';
-      doc.setFontSize(9);
-      doc.setFont(undefined, 'normal');
-      const fullName = `${firstName} ${lastName}`.trim();
-      doc.text(fullName || 'N/A', margin, yPosition);
-      yPosition += 4;
+        // ===== TABLE HEADER =====
+        const colX = { item: margin, category: margin + 60, description: margin + 140, amount: margin + 280 };
+        
+        doc.rect(margin, y - 5, pageWidth - 2 * margin, 20).stroke();
+        doc.fontSize(9).font('Helvetica-Bold');
+        doc.text('ITEM', colX.item, y);
+        doc.text('CATEGORY', colX.category, y);
+        doc.text('DESCRIPTION', colX.description, y);
+        doc.text('AMOUNT', colX.amount, y);
+        y += 25;
 
-      // Loan details
-      doc.setFontSize(8);
-      const loanId = loan.id || loan.loanId || 'N/A';
-      // loanAmount already extracted in validation
-      const dueDate = loan.due_date || loan.dueDate || 'N/A';
+        // ===== TABLE CONTENT =====
+        const itemCategory = loan.item_category || loan.itemCategory || 'Loan';
+        const itemDescription = loan.collateral_description || loan.collateralDescription || loan.item_description || loan.itemDescription || 'Pawn Loan Agreement';
+        const totalPayable = loan.total_payable_amount || loan.totalPayableAmount || loanAmount;
 
-      doc.text(`Loan ID: ${loanId}`, margin, yPosition);
-      yPosition += 4;
-      doc.text(`Loan Amount: $${parseFloat(loanAmount).toFixed(2)}`, margin, yPosition);
-      yPosition += 4;
-      doc.text(`Due Date: ${dueDate}`, margin, yPosition);
-      yPosition += 6;
+        doc.fontSize(9).font('Helvetica');
+        doc.text(`LN-${loanId}`, colX.item);
+        doc.text(itemCategory, colX.category);
+        doc.text(itemDescription.substring(0, 40), colX.description);
+        doc.text(`$${parseFloat(totalPayable).toFixed(2)}`, colX.amount);
+        y += 20;
 
-      // ===== TABLE HEADER =====
-      const tableTop = yPosition;
-      const colWidths = {
-        item: 25,
-        category: 35,
-        description: 70,
-        amount: 30
-      };
+        // ===== CHARGES DUE =====
+        doc.fontSize(9).font('Helvetica').text('CHARGES ON THIS ACCOUNT ARE DUE ON OR BEFORE', margin);
+        doc.text(dueDate, pageWidth - margin - 80, y - 12);
+        y += 15;
 
-      // Header background
-      doc.setFillColor(200, 200, 200);
-      doc.rect(margin, tableTop, contentWidth, 7, 'F');
+        // ===== TOTAL =====
+        doc.fontSize(11).font('Helvetica-Bold');
+        doc.text('TOTAL', margin);
+        doc.text(`$${parseFloat(totalPayable).toFixed(2)}`, pageWidth - margin - 80, y - 12);
+        y += 20;
 
-      doc.setFont(undefined, 'bold');
-      doc.setFontSize(9);
-      doc.text('ITEM', margin + 2, tableTop + 5);
-      doc.text('CATEGORY', margin + colWidths.item + 2, tableTop + 5);
-      doc.text('DESCRIPTION', margin + colWidths.item + colWidths.category + 2, tableTop + 5);
-      doc.text('AMOUNT', margin + colWidths.item + colWidths.category + colWidths.description + 2, tableTop + 5);
+        // ===== LEGAL TERMS =====
+        doc.fontSize(7).font('Helvetica');
+        const legalText = `I, the undersigned (herein 'the seller'), do hereby loan the item(s) above amount, the receipt of which is acknowledge by the undersigned (herein 'the Seller'), said Seller does sell, transfer, and assign all rights, title and interest in the described property to GRN. The seller declares that the above is their own personal property free and clear of all claims and liens whatsoever and that they have the full power to sell, transfer and deliver said property as provided herein.`;
+        
+        doc.text(legalText, margin, y, { width: pageWidth - 2 * margin, align: 'left' });
 
-      // Table border
-      doc.setDrawColor(0, 0, 0);
-      doc.rect(margin, tableTop, contentWidth, 7);
-      doc.line(margin + colWidths.item, tableTop, margin + colWidths.item, tableTop + 7);
-      doc.line(margin + colWidths.item + colWidths.category, tableTop, margin + colWidths.item + colWidths.category, tableTop + 7);
-      doc.line(margin + colWidths.item + colWidths.category + colWidths.description, tableTop, margin + colWidths.item + colWidths.category + colWidths.description, tableTop + 7);
+        // ===== FOOTER =====
+        doc.fontSize(7).text('Pawn-GR-02-CAN', pageWidth - margin - 50, pageHeight - margin);
 
-      yPosition = tableTop + 8;
-
-      // ===== TABLE CONTENT =====
-      doc.setFont(undefined, 'normal');
-      doc.setFontSize(8);
-      doc.text('LN-' + loanId, margin + 2, yPosition);
-
-      // Use actual collateral/item data from loan
-      const itemCategory = loan.item_category || loan.itemCategory || 'Loan';
-      const itemDescription = loan.collateral_description || loan.collateralDescription || loan.item_description || loan.itemDescription || 'Pawn Loan Agreement';
-
-      doc.text(itemCategory, margin + colWidths.item + 2, yPosition);
-      doc.text(itemDescription, margin + colWidths.item + colWidths.category + 2, yPosition);
-
-      const totalPayable = loan.total_payable_amount || loan.totalPayableAmount || loanAmount;
-      doc.text(formatCurrency(totalPayable), margin + colWidths.item + colWidths.category + colWidths.description + 2, yPosition);
-
-      yPosition += 8;
-
-      // ===== CHARGES DUE =====
-      doc.setFont(undefined, 'normal');
-      doc.setFontSize(8);
-      doc.text('CHARGES ON THIS ACCOUNT ARE DUE ON OR BEFORE', margin + colWidths.item + colWidths.category + 5, yPosition);
-      doc.text(dueDate, pageWidth - margin - 40, yPosition);
-      yPosition += 6;
-
-      // ===== TOTAL =====
-      doc.setFont(undefined, 'bold');
-      doc.setFontSize(9);
-      doc.text('TOTAL', margin + colWidths.item + colWidths.category + 5, yPosition);
-      doc.text(formatCurrency(totalPayable), pageWidth - margin - 40, yPosition);
-      yPosition += 8;
-
-      // ===== LEGAL TERMS =====
-      doc.setFont(undefined, 'normal');
-      doc.setFontSize(7);
-
-      const legalText = `I, the undersigned (herein 'the seller'), do hereby loan the item(s) above amount, the receipt of which is acknowledge by the undersigned (herein 'the Seller'), said Seller does sell, transfer, and assign all rights, title and interest in the described property to GRN. The seller declares that the above is their own personal property free and clear of all claims and liens whatsoever and that they have the full power to sell, transfer and deliver said property as provided herein.`;
-
-      const splitText = doc.splitTextToSize(legalText, contentWidth - 4);
-      doc.text(splitText, margin + 2, yPosition);
-
-      // ===== FOOTER =====
-      doc.setDrawColor(0, 0, 0);
-      doc.line(margin, pageHeight - 10, pageWidth - margin, pageHeight - 10);
-      doc.setFontSize(7);
-      doc.text('Pawn-GR-02-CAN', pageWidth - margin - 30, pageHeight - 5);
-
-      // Output as buffer
-      const pdfBuffer = Buffer.from(doc.output('arraybuffer'));
-      
-      console.log('✅ PDF generated successfully, buffer size:', pdfBuffer.length);
-      resolve(pdfBuffer);
-    } catch (error) {
-      console.error('❌ PDF Generation Error:', error.message);
-      console.error('Loan data:', { id: loan?.id, hasAmount: !!loan?.loan_amount });
-      reject(error);
-    }
-  });
+        doc.end();
+      } catch (err) {
+        console.error('❌ PDF Generation Error:', err.message);
+        reject(err);
+      }
+    });
+  } catch (error) {
+    console.error('❌ PDF Generation Error:', error.message);
+    console.error('Stack:', error.stack);
+    throw error;
+  }
 }
 
 /**
