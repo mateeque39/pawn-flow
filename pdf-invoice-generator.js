@@ -22,7 +22,8 @@ async function generateLoanPDF(loan) {
   try {
     console.log('🔧 PDF Generator - Creating jsPDF receipt for loan:', loan?.id);
     console.log('   Loan object keys:', Object.keys(loan || {}).join(', '));
-    console.log('   jsPDF version check:', typeof jsPDF);
+    console.log('   Customer data - first_name:', loan?.first_name, 'last_name:', loan?.last_name);
+    console.log('   Collateral description:', loan?.collateral_description);
     
     // Validate loan object
     if (!loan) {
@@ -79,37 +80,56 @@ async function generateLoanPDF(loan) {
     doc.line(margin, y, pageWidth - margin, y);
     y += 8;
 
-    // ===== CUSTOMER INFO =====
+    // ===== CUSTOMER INFO SECTION =====
+    // Left: [CUSTOMER] label and name
+    // Right: Transaction number
     doc.setFontSize(11).setFont(undefined, 'bold');
     doc.text('[CUSTOMER]', margin, y);
-    
-    const transactionNumber = loan.transaction_number || loan.transactionNumber || 'N/A';
-    doc.setFontSize(9).setFont(undefined, 'normal');
-    doc.text(`Transaction: ${transactionNumber}`, pageWidth - margin - 50, y);
     y += 7;
 
-    // Customer name
-    const firstName = loan.first_name || loan.firstName || 'Customer';
-    const lastName = loan.last_name || loan.lastName || '';
-    const fullName = `${firstName} ${lastName}`.trim();
+    // Customer name - extract from database fields
+    const firstName = String(loan.first_name || '').trim();
+    const lastName = String(loan.last_name || '').trim();
+    const fullName = firstName || lastName ? `${firstName} ${lastName}`.trim() : 'Unknown Customer';
+    
+    console.log('   Full name constructed:', fullName);
+    
     doc.setFontSize(10).setFont(undefined, 'normal');
-    doc.text(fullName || 'N/A', margin, y);
-    y += 6;
+    doc.text(fullName, margin, y);
+    y += 7;
 
     // Loan details
-    const loanId = loan.id || loan.loanId || 'N/A';
-    let dueDate = loan.due_date || loan.dueDate || 'N/A';
-    // Convert Date object to string if needed
-    if (dueDate instanceof Date) {
-      dueDate = dueDate.toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' });
-    }
+    const loanId = loan.id || 'N/A';
+    const transactionNumber = String(loan.transaction_number || 'N/A').trim();
     
     doc.setFontSize(9);
     doc.text(`Loan ID: ${loanId}`, margin, y);
     y += 5;
     doc.text(`Loan Amount: $${parseFloat(loanAmount).toFixed(2)}`, margin, y);
     y += 5;
+    
+    // Due date
+    let dueDate = loan.due_date || loan.dueDate || 'N/A';
+    if (dueDate instanceof Date) {
+      dueDate = dueDate.toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' });
+    } else if (typeof dueDate === 'string') {
+      // If it's a string, try to parse and format it
+      try {
+        const dateObj = new Date(dueDate);
+        if (!isNaN(dateObj.getTime())) {
+          dueDate = dateObj.toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' });
+        }
+      } catch (e) {
+        // Keep original string if parsing fails
+      }
+    }
     doc.text(`Due Date: ${String(dueDate)}`, margin, y);
+    
+    // Transaction number on the right
+    const transactionY = margin + 15; // Positioned at top right near customer section
+    doc.setFontSize(9).setFont(undefined, 'normal');
+    doc.text(`Transaction: ${transactionNumber}`, pageWidth - margin - 50, transactionY, { align: 'right' });
+    
     y += 8;
 
     // ===== TABLE HEADER =====
@@ -124,9 +144,14 @@ async function generateLoanPDF(loan) {
     y += 10;
 
     // ===== TABLE CONTENT =====
-    const itemCategory = loan.item_category || loan.itemCategory || 'Loan';
-    const itemDescription = (loan.collateral_description || loan.collateralDescription || loan.item_description || loan.itemDescription || 'Pawn Loan Agreement').substring(0, 45);
-    const totalPayable = loan.total_payable_amount || loan.totalPayableAmount || loanAmount;
+    const itemCategory = String(loan.item_category || 'Loan').trim();
+    const collateralDesc = String(loan.collateral_description || 'Pawn Loan Agreement').trim();
+    const itemDescription = collateralDesc.substring(0, 40); // Truncate to fit
+    const totalPayable = loan.total_payable_amount || loanAmount;
+
+    console.log('   Item category:', itemCategory);
+    console.log('   Item description:', itemDescription);
+    console.log('   Total payable:', totalPayable);
 
     doc.setFontSize(9).setFont(undefined, 'normal');
     doc.text(`LN-${loanId}`, margin + 2, y);
@@ -194,6 +219,7 @@ async function generateLoanPDF(loan) {
     console.error('   Stack:', error.stack);
     console.error('   Loan ID:', loan?.id);
     console.error('   Loan amount:', loan?.loan_amount);
+    console.error('   Customer:', `${loan?.first_name} ${loan?.last_name}`);
     console.error('   Full error object:', JSON.stringify(error, null, 2));
     // Always throw with all available info
     throw new Error(`PDF Generation failed: ${error.message} | Type: ${error.name} | Loan: ${loan?.id}`);
