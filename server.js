@@ -4,7 +4,8 @@ const jwt = require('jsonwebtoken');
 const cors = require('cors');
 const { Pool } = require('pg');
 const validators = require('./validators');
-const { generateLoanPDF } = require('./pdf-invoice-generator');
+// Use simplified PDF generator to debug Railway issues
+const { generateLoanPDF } = require('./pdf-invoice-generator-simple');
 require('dotenv').config();
 
 const app = express();
