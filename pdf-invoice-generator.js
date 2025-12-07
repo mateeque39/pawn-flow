@@ -32,117 +32,116 @@ async function generateLoanPDF(loan) {
       throw new Error('Loan amount is required and must be a valid number');
     }
 
-    // Create PDF document using PDFKit (instead of jsPDF for better control)
-    const PDFDocument = require('pdfkit');
-    const doc = new PDFDocument();
+    // Create PDF document using jsPDF (which IS in package.json)
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const margin = 15;
+    let y = margin;
+
+    // ===== COMPANY HEADER =====
+    doc.setFontSize(16).setFont(undefined, 'bold');
+    doc.text('GREEN MOOLAA BRAMPTON', pageWidth / 2, y, { align: 'center' });
+    y += 7;
+
+    doc.setFontSize(10).setFont(undefined, 'normal');
+    doc.text('263 QUEEN ST. E. UNIT 4', pageWidth / 2, y, { align: 'center' });
+    y += 5;
+    doc.text('BRAMPTON ON L6W 4K6', pageWidth / 2, y, { align: 'center' });
+    y += 5;
+    doc.text('(905) 796-7777', pageWidth / 2, y, { align: 'center' });
+    y += 8;
+
+    // Horizontal line
+    doc.setDrawColor(0, 0, 0);
+    doc.line(margin, y, pageWidth - margin, y);
+    y += 8;
+
+    // ===== CUSTOMER INFO =====
+    doc.setFontSize(11).setFont(undefined, 'bold');
+    doc.text('[CUSTOMER]', margin, y);
     
-    // Collect PDF data
-    const chunks = [];
-    doc.on('data', chunk => chunks.push(chunk));
+    const transactionNumber = loan.transaction_number || loan.transactionNumber || 'N/A';
+    doc.setFontSize(9).setFont(undefined, 'normal');
+    doc.text(`Transaction: ${transactionNumber}`, pageWidth - margin - 50, y);
+    y += 7;
+
+    // Customer name
+    const firstName = loan.first_name || loan.firstName || 'Customer';
+    const lastName = loan.last_name || loan.lastName || '';
+    const fullName = `${firstName} ${lastName}`.trim();
+    doc.setFontSize(10).setFont(undefined, 'normal');
+    doc.text(fullName || 'N/A', margin, y);
+    y += 6;
+
+    // Loan details
+    const loanId = loan.id || loan.loanId || 'N/A';
+    const dueDate = loan.due_date || loan.dueDate || 'N/A';
     
-    return new Promise((resolve, reject) => {
-      doc.on('end', () => {
-        const pdfBuffer = Buffer.concat(chunks);
-        console.log('✅ PDF generated successfully, buffer size:', pdfBuffer.length);
-        resolve(pdfBuffer);
-      });
-      
-      doc.on('error', err => {
-        console.error('❌ PDF Generation Error:', err.message);
-        reject(err);
-      });
+    doc.setFontSize(9);
+    doc.text(`Loan ID: ${loanId}`, margin, y);
+    y += 5;
+    doc.text(`Loan Amount: $${parseFloat(loanAmount).toFixed(2)}`, margin, y);
+    y += 5;
+    doc.text(`Due Date: ${dueDate}`, margin, y);
+    y += 8;
 
-      try {
-        const pageWidth = 595;
-        const pageHeight = 842;
-        const margin = 40;
-        let y = margin;
+    // ===== TABLE HEADER =====
+    doc.setDrawColor(0);
+    doc.rect(margin, y, pageWidth - 2 * margin, 8);
+    
+    doc.setFontSize(9).setFont(undefined, 'bold');
+    doc.text('ITEM', margin + 2, y + 5);
+    doc.text('CATEGORY', margin + 35, y + 5);
+    doc.text('DESCRIPTION', margin + 75, y + 5);
+    doc.text('AMOUNT', pageWidth - margin - 25, y + 5);
+    y += 10;
 
-        // ===== COMPANY HEADER =====
-        doc.fontSize(16).font('Helvetica-Bold').text('GREEN MOOLAA BRAMPTON', { align: 'center' });
-        y += 20;
-        doc.fontSize(10).font('Helvetica').text('263 QUEEN ST. E. UNIT 4', { align: 'center' });
-        doc.text('BRAMPTON ON L6W 4K6', { align: 'center' });
-        doc.text('(905) 796-7777', { align: 'center' });
-        y += 15;
+    // ===== TABLE CONTENT =====
+    const itemCategory = loan.item_category || loan.itemCategory || 'Loan';
+    const itemDescription = (loan.collateral_description || loan.collateralDescription || loan.item_description || loan.itemDescription || 'Pawn Loan Agreement').substring(0, 45);
+    const totalPayable = loan.total_payable_amount || loan.totalPayableAmount || loanAmount;
 
-        // Horizontal line
-        doc.moveTo(margin, y).lineTo(pageWidth - margin, y).stroke();
-        y += 15;
+    doc.setFontSize(9).setFont(undefined, 'normal');
+    doc.text(`LN-${loanId}`, margin + 2, y);
+    doc.text(itemCategory, margin + 35, y);
+    doc.text(itemDescription, margin + 75, y);
+    doc.text(`$${parseFloat(totalPayable).toFixed(2)}`, pageWidth - margin - 25, y);
+    y += 10;
 
-        // ===== CUSTOMER INFO =====
-        doc.fontSize(10).font('Helvetica-Bold').text('[CUSTOMER]', margin, y);
-        const transactionNumber = loan.transaction_number || loan.transactionNumber || 'N/A';
-        doc.fontSize(9).font('Helvetica').text(`Transaction: ${transactionNumber}`, pageWidth - margin - 100, y);
-        y += 15;
+    // ===== CHARGES DUE =====
+    doc.setFontSize(9).setFont(undefined, 'normal');
+    doc.text('CHARGES ON THIS ACCOUNT ARE DUE ON OR BEFORE', margin, y);
+    doc.text(dueDate, pageWidth - margin - 30, y);
+    y += 8;
 
-        const firstName = loan.first_name || loan.firstName || 'Customer';
-        const lastName = loan.last_name || loan.lastName || '';
-        const fullName = `${firstName} ${lastName}`.trim();
-        doc.fontSize(10).font('Helvetica').text(fullName || 'N/A', margin);
-        y += 12;
+    // ===== TOTAL =====
+    doc.setFontSize(11).setFont(undefined, 'bold');
+    doc.text('TOTAL', margin, y);
+    doc.text(`$${parseFloat(totalPayable).toFixed(2)}`, pageWidth - margin - 30, y);
+    y += 10;
 
-        // Loan details
-        const loanId = loan.id || loan.loanId || 'N/A';
-        const dueDate = loan.due_date || loan.dueDate || 'N/A';
-        
-        doc.fontSize(9).font('Helvetica').text(`Loan ID: ${loanId}`, margin);
-        doc.text(`Loan Amount: $${parseFloat(loanAmount).toFixed(2)}`, margin);
-        doc.text(`Due Date: ${dueDate}`, margin);
-        y += 20;
+    // ===== LEGAL TERMS =====
+    doc.setFontSize(7).setFont(undefined, 'normal');
+    const legalText = `I, the undersigned (herein 'the seller'), do hereby loan the item(s) above amount, the receipt of which is acknowledge by the undersigned (herein 'the Seller'), said Seller does sell, transfer, and assign all rights, title and interest in the described property to GRN. The seller declares that the above is their own personal property free and clear of all claims and liens whatsoever and that they have the full power to sell, transfer and deliver said property as provided herein.`;
+    
+    const splitText = doc.splitTextToSize(legalText, pageWidth - 2 * margin - 4);
+    doc.text(splitText, margin + 2, y);
 
-        // ===== TABLE HEADER =====
-        const colX = { item: margin, category: margin + 60, description: margin + 140, amount: margin + 280 };
-        
-        doc.rect(margin, y - 5, pageWidth - 2 * margin, 20).stroke();
-        doc.fontSize(9).font('Helvetica-Bold');
-        doc.text('ITEM', colX.item, y);
-        doc.text('CATEGORY', colX.category, y);
-        doc.text('DESCRIPTION', colX.description, y);
-        doc.text('AMOUNT', colX.amount, y);
-        y += 25;
+    // ===== FOOTER =====
+    doc.setDrawColor(0);
+    doc.line(margin, pageHeight - 12, pageWidth - margin, pageHeight - 12);
+    doc.setFontSize(7);
+    doc.text('Pawn-GR-02-CAN', pageWidth - margin - 25, pageHeight - 5);
 
-        // ===== TABLE CONTENT =====
-        const itemCategory = loan.item_category || loan.itemCategory || 'Loan';
-        const itemDescription = loan.collateral_description || loan.collateralDescription || loan.item_description || loan.itemDescription || 'Pawn Loan Agreement';
-        const totalPayable = loan.total_payable_amount || loan.totalPayableAmount || loanAmount;
-
-        doc.fontSize(9).font('Helvetica');
-        doc.text(`LN-${loanId}`, colX.item);
-        doc.text(itemCategory, colX.category);
-        doc.text(itemDescription.substring(0, 40), colX.description);
-        doc.text(`$${parseFloat(totalPayable).toFixed(2)}`, colX.amount);
-        y += 20;
-
-        // ===== CHARGES DUE =====
-        doc.fontSize(9).font('Helvetica').text('CHARGES ON THIS ACCOUNT ARE DUE ON OR BEFORE', margin);
-        doc.text(dueDate, pageWidth - margin - 80, y - 12);
-        y += 15;
-
-        // ===== TOTAL =====
-        doc.fontSize(11).font('Helvetica-Bold');
-        doc.text('TOTAL', margin);
-        doc.text(`$${parseFloat(totalPayable).toFixed(2)}`, pageWidth - margin - 80, y - 12);
-        y += 20;
-
-        // ===== LEGAL TERMS =====
-        doc.fontSize(7).font('Helvetica');
-        const legalText = `I, the undersigned (herein 'the seller'), do hereby loan the item(s) above amount, the receipt of which is acknowledge by the undersigned (herein 'the Seller'), said Seller does sell, transfer, and assign all rights, title and interest in the described property to GRN. The seller declares that the above is their own personal property free and clear of all claims and liens whatsoever and that they have the full power to sell, transfer and deliver said property as provided herein.`;
-        
-        doc.text(legalText, margin, y, { width: pageWidth - 2 * margin, align: 'left' });
-
-        // ===== FOOTER =====
-        doc.fontSize(7).text('Pawn-GR-02-CAN', pageWidth - margin - 50, pageHeight - margin);
-
-        doc.end();
-      } catch (err) {
-        console.error('❌ PDF Generation Error:', err.message);
-        reject(err);
-      }
-    });
+    // Return as buffer
+    const pdfBuffer = Buffer.from(doc.output('arraybuffer'));
+    console.log('✅ PDF generated successfully, buffer size:', pdfBuffer.length);
+    return pdfBuffer;
   } catch (error) {
     console.error('❌ PDF Generation Error:', error.message);
     console.error('Stack:', error.stack);
+    console.error('Loan object:', { id: loan?.id, loan_amount: loan?.loan_amount, loanAmount: loan?.loanAmount });
     throw error;
   }
 }
