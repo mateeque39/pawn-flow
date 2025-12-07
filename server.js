@@ -4433,15 +4433,20 @@ app.get('/api/loans/:loanId/receipt', authenticateToken, async (req, res) => {
     try {
       pdfBuffer = await generateLoanPDF(loan);
     } catch (pdfError) {
-      console.error('❌ PDF generation failed:', pdfError.message);
-      console.error('   Error details:', pdfError);
-      console.error('   Full stack:', pdfError.stack);
-      console.error('   Loan data:', loan);
+      // Always log full error details to console for Railway debugging
+      console.error('❌❌❌ PDF GENERATION FAILED ❌❌❌');
+      console.error('Message:', pdfError.message);
+      console.error('Type:', pdfError.name);
+      console.error('Stack:', pdfError.stack);
+      console.error('Loan:', { id: loan.id, amount: loan.loan_amount });
+      console.error('Full error:', pdfError);
+      
       return res.status(500).json({ 
         message: 'Failed to generate PDF',
         error: process.env.NODE_ENV === 'development' ? pdfError.message : 'PDF generation error',
         loanId: loan.id,
-        env: process.env.NODE_ENV
+        env: process.env.NODE_ENV,
+        errorMessage: pdfError.message // Always include message in response for debugging
       });
     }
 

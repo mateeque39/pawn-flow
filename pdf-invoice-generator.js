@@ -190,7 +190,9 @@ async function generateLoanPDF(loan) {
     console.error('   Stack:', error.stack);
     console.error('   Loan ID:', loan?.id);
     console.error('   Loan amount:', loan?.loan_amount);
-    throw error;
+    console.error('   Full error object:', JSON.stringify(error, null, 2));
+    // Always throw with all available info
+    throw new Error(`PDF Generation failed: ${error.message} | Type: ${error.name} | Loan: ${loan?.id}`);
   }
 }
 
