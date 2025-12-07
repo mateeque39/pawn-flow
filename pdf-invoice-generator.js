@@ -33,8 +33,8 @@ async function generateLoanPDF(loan) {
         return;
       }
       
-      // Check loan amount - allow 0 but not undefined/null
-      const loanAmount = loan.loan_amount || loan.loanAmount;
+      // Check loan amount - allow 0 but not undefined/null (declare at function scope)
+      let loanAmount = loan.loan_amount || loan.loanAmount;
       if (loanAmount === null || loanAmount === undefined) {
         reject(new Error('Loan amount is required'));
         return;
