@@ -82,8 +82,29 @@ async function generateLoanPDF(loan) {
     const loanId = loan.id || 'N/A';
     const status = String(loan.status || 'N/A').trim().toUpperCase();
     const loanAmount = parseFloat(loan.loan_amount || 0).toFixed(2);
-    const collateralItem = String(loan.collateral_description || 'N/A').trim();
-    const itemDescription = collateralItem.substring(0, 50);
+    
+    // Try multiple fields for collateral - use whichever has data
+    let collateralItem = String(loan.collateral_description || '').trim();
+    if (!collateralItem) {
+      collateralItem = String(loan.item_description || '').trim();
+    }
+    if (!collateralItem) {
+      collateralItem = String(loan.item_category || '').trim();
+    }
+    if (!collateralItem) {
+      collateralItem = 'N/A';
+    }
+    
+    // Item description is separate - also try fallbacks
+    let itemDescription = String(loan.item_description || '').trim();
+    if (!itemDescription && loan.collateral_description) {
+      itemDescription = String(loan.collateral_description || '').trim();
+    }
+    if (!itemDescription) {
+      itemDescription = collateralItem;
+    }
+    itemDescription = itemDescription.substring(0, 50);
+    
     const interestAmount = parseFloat(loan.interest_amount || 0).toFixed(2);
     const recurringFee = parseFloat(loan.recurring_fee || 0).toFixed(2);
     
