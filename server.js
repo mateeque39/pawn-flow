@@ -60,10 +60,10 @@ const PORT = process.env.PORT || 5000;
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-  max: 20,                           // Maximum pool size
-  idleTimeoutMillis: 30000,         // Close idle connections after 30 seconds
-  connectionTimeoutMillis: 10000,   // Fail connection attempt after 10 seconds
-  statement_timeout: 30000,         // SQL statement timeout (30 seconds)
+  max: 10,                           // Maximum pool size (reduced for stability)
+  idleTimeoutMillis: 45000,         // Close idle connections after 45 seconds
+  connectionTimeoutMillis: 20000,   // Fail connection attempt after 20 seconds
+  statement_timeout: 20000,         // SQL statement timeout (20 seconds)
 });
 
 // Add pool error handlers
@@ -118,15 +118,8 @@ cron.schedule('0 0 * * *', async () => {
 
 // ======================== MIDDLEWARE DEFINITIONS ========================
 
-// Helper function to execute query with timeout
-const queryWithTimeout = async (pool, queryText, params, timeoutMs = 10000) => {
-  return Promise.race([
-    pool.query(queryText, params),
-    new Promise((_, reject) => 
-      setTimeout(() => reject(new Error(`Query timeout after ${timeoutMs}ms`)), timeoutMs)
-    )
-  ]);
-};
+// Timeouts are managed at the pool level via connection configuration
+// No per-query timeout wrapper needed
 
 // Verify JWT token and extract user info
 const authenticateToken = (req, res, next) => {
@@ -183,11 +176,9 @@ const requireActiveShift = async (req, res, next) => {
     let shiftCheck = null;
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        shiftCheck = await queryWithTimeout(
-          pool,
+        shiftCheck = await pool.query(
           'SELECT id, shift_start_time, shift_end_time FROM shift_management WHERE user_id = $1 AND shift_end_time IS NULL ORDER BY id DESC LIMIT 1',
-          [userId],
-          8000 // 8 second timeout per query
+          [userId]
         );
         
         if (shiftCheck.rows.length > 0) {
@@ -209,11 +200,9 @@ const requireActiveShift = async (req, res, next) => {
     if (shiftCheck.rows.length === 0) {
       // Debug: Log recent shifts to understand why none are active
       try {
-        const recentShifts = await queryWithTimeout(
-          pool,
+        const recentShifts = await pool.query(
           'SELECT id, shift_start_time, shift_end_time FROM shift_management WHERE user_id = $1 ORDER BY id DESC LIMIT 3',
-          [userId],
-          5000
+          [userId]
         );
         console.warn(`⚠️  No active shift for user ${userId} (after 3 retries). Recent shifts:`, recentShifts.rows);
       } catch (err) {
@@ -2831,18 +2820,16 @@ app.post('/start-shift', async (req, res) => {
       return res.status(400).json({ message: 'Invalid opening balance' });
     }
 
-    // Check if there's an active shift for this user (with timeout)
+    // Check if there's an active shift for this user
     let activeShiftCheck;
     try {
-      activeShiftCheck = await queryWithTimeout(
-        pool,
+      activeShiftCheck = await pool.query(
         'SELECT * FROM shift_management WHERE user_id = $1 AND shift_end_time IS NULL',
-        [userId],
-        8000
+        [userId]
       );
     } catch (err) {
-      console.error('Timeout checking active shift:', err.message);
-      return res.status(503).json({ message: 'Database service temporarily unavailable' });
+      console.error('Error checking active shift:', err.message);
+      return res.status(503).json({ message: 'Database error: ' + err.message });
     }
 
     if (activeShiftCheck.rows.length > 0) {
@@ -2850,20 +2837,18 @@ app.post('/start-shift', async (req, res) => {
       return res.status(400).json({ message: 'User already has an active shift. Please close the previous shift first.' });
     }
 
-    // Insert new shift record (with timeout)
+    // Insert new shift record
     let result;
     try {
-      result = await queryWithTimeout(
-        pool,
+      result = await pool.query(
         `INSERT INTO shift_management (user_id, shift_start_time, opening_balance)
          VALUES ($1, CURRENT_TIMESTAMP, $2)
          RETURNING *`,
-        [userId, parseFloat(openingBalance)],
-        8000
+        [userId, parseFloat(openingBalance)]
       );
     } catch (err) {
-      console.error('Timeout creating shift:', err.message);
-      return res.status(503).json({ message: 'Database service temporarily unavailable' });
+      console.error('Error creating shift:', err.message);
+      return res.status(503).json({ message: 'Database error: ' + err.message });
     }
 
     console.log(`✅ Shift ${result.rows[0].id} created for user ${userId}:`, {
@@ -2901,15 +2886,13 @@ app.get('/current-shift', async (req, res) => {
 
     let result;
     try {
-      result = await queryWithTimeout(
-        pool,
+      result = await pool.query(
         'SELECT * FROM shift_management WHERE user_id = $1 AND shift_end_time IS NULL ORDER BY id DESC LIMIT 1',
-        [userIdNum],
-        8000
+        [userIdNum]
       );
     } catch (err) {
-      console.error('Timeout fetching current shift:', err.message);
-      return res.status(503).json({ message: 'Database service temporarily unavailable' });
+      console.error('Error fetching current shift:', err.message);
+      return res.status(503).json({ message: 'Database error: ' + err.message });
     }
 
     if (result.rows.length === 0) {
@@ -2940,15 +2923,13 @@ app.get('/current-shift/:userId', async (req, res) => {
 
     let result;
     try {
-      result = await queryWithTimeout(
-        pool,
+      result = await pool.query(
         'SELECT * FROM shift_management WHERE user_id = $1 AND shift_end_time IS NULL ORDER BY id DESC LIMIT 1',
-        [userIdNum],
-        8000
+        [userIdNum]
       );
     } catch (err) {
-      console.error('Timeout fetching current shift:', err.message);
-      return res.status(503).json({ message: 'Database service temporarily unavailable' });
+      console.error('Error fetching current shift:', err.message);
+      return res.status(503).json({ message: 'Database error: ' + err.message });
     }
 
     if (result.rows.length === 0) {
@@ -2972,18 +2953,16 @@ app.post('/end-shift', async (req, res) => {
       return res.status(400).json({ message: 'Invalid closing balance' });
     }
 
-    // Get active shift (with timeout)
+    // Get active shift
     let shiftResult;
     try {
-      shiftResult = await queryWithTimeout(
-        pool,
+      shiftResult = await pool.query(
         'SELECT * FROM shift_management WHERE user_id = $1 AND shift_end_time IS NULL ORDER BY id DESC LIMIT 1',
-        [userId],
-        8000
+        [userId]
       );
     } catch (err) {
-      console.error('Timeout fetching shift:', err.message);
-      return res.status(503).json({ message: 'Database service temporarily unavailable' });
+      console.error('Error fetching shift:', err.message);
+      return res.status(503).json({ message: 'Database error: ' + err.message });
     }
 
     if (shiftResult.rows.length === 0) {
@@ -2992,36 +2971,32 @@ app.post('/end-shift', async (req, res) => {
 
     const shift = shiftResult.rows[0];
 
-    // Get CASH payments received only (not card, check, etc) (with timeout)
+    // Get CASH payments received only (not card, check, etc)
     let paymentsResult;
     try {
-      paymentsResult = await queryWithTimeout(
-        pool,
+      paymentsResult = await pool.query(
         `SELECT COALESCE(SUM(payment_amount), 0) AS total_payments 
          FROM payment_history 
          WHERE created_by = $1 AND payment_date >= $2 AND LOWER(payment_method) = 'cash'`,
-        [userId, shift.shift_start_time],
-        8000
+        [userId, shift.shift_start_time]
       );
     } catch (err) {
-      console.error('Timeout fetching payments:', err.message);
-      return res.status(503).json({ message: 'Database service temporarily unavailable' });
+      console.error('Error fetching payments:', err.message);
+      return res.status(503).json({ message: 'Database error: ' + err.message });
     }
 
-    // Get all loans given during this shift (with timeout)
+    // Get all loans given during this shift
     let loansGivenResult;
     try {
-      loansGivenResult = await queryWithTimeout(
-        pool,
+      loansGivenResult = await pool.query(
         `SELECT COALESCE(SUM(loan_amount), 0) AS total_loans_given 
          FROM loans 
          WHERE created_by = $1 AND loan_issued_date >= DATE($2)`,
-        [userId, shift.shift_start_time],
-        8000
+        [userId, shift.shift_start_time]
       );
     } catch (err) {
-      console.error('Timeout fetching loans:', err.message);
-      return res.status(503).json({ message: 'Database service temporarily unavailable' });
+      console.error('Error fetching loans:', err.message);
+      return res.status(503).json({ message: 'Database error: ' + err.message });
     }
 
     const totalCashPayments = parseFloat(paymentsResult.rows[0].total_payments || 0);
