@@ -381,7 +381,7 @@ app.get('/payment-history', async (req, res) => {
 
 
 // ---------------------------- CREATE LOAN ----------------------------
-app.post('/create-loan', async (req, res) => {
+app.post('/create-loan', requireActiveShift, async (req, res) => {
   try {
     // Map request body (handles both camelCase and snake_case)
     const mapped = validators.mapRequestToDb(req.body);
@@ -735,7 +735,7 @@ app.get('/search-loan', async (req, res) => {
 
 
 // ---------------------------- MAKE PAYMENT ----------------------------
-app.post('/make-payment', async (req, res) => {
+app.post('/make-payment', requireActiveShift, async (req, res) => {
   const { loanId, paymentMethod, paymentAmount, userId } = req.body;
 
   try {
@@ -800,7 +800,7 @@ app.post('/make-payment', async (req, res) => {
 // ---------------------------- REDEEM LOAN ----------------------------
 
 
-app.post('/redeem-loan', async (req, res) => {
+app.post('/redeem-loan', requireActiveShift, async (req, res) => {
   const { loanId, userId } = req.body;
 
   try {
@@ -869,7 +869,7 @@ app.post('/redeem-loan', async (req, res) => {
 
 
 // Forfeit Loan route
-app.post('/forfeit-loan', async (req, res) => {
+app.post('/forfeit-loan', requireActiveShift, async (req, res) => {
   const { loanId, userId } = req.body;
 
   try {
@@ -1847,7 +1847,7 @@ const ensureInterestAmount = (loan) => {
 // ======================== CUSTOMER-CENTRIC LOAN MANAGEMENT ========================
 
 // CREATE LOAN FOR CUSTOMER - POST /customers/:customerId/loans
-app.post('/customers/:customerId/loans', async (req, res) => {
+app.post('/customers/:customerId/loans', requireActiveShift, async (req, res) => {
   try {
     const { customerId } = req.params;
     const mapped = validators.mapRequestToDb(req.body);
@@ -2133,7 +2133,7 @@ app.get('/customers/:customerId/loans/search', async (req, res) => {
 });
 
 // MAKE PAYMENT FOR CUSTOMER LOAN - POST /customers/:customerId/loans/:loanId/payment
-app.post('/customers/:customerId/loans/:loanId/payment', async (req, res) => {
+app.post('/customers/:customerId/loans/:loanId/payment', requireActiveShift, async (req, res) => {
   const { customerId, loanId } = req.params;
   const { paymentMethod, paymentAmount, userId } = req.body;
 
@@ -2213,7 +2213,7 @@ app.post('/customers/:customerId/loans/:loanId/payment', async (req, res) => {
 });
 
 // REDEEM LOAN FOR CUSTOMER - POST /customers/:customerId/loans/:loanId/redeem
-app.post('/customers/:customerId/loans/:loanId/redeem', async (req, res) => {
+app.post('/customers/:customerId/loans/:loanId/redeem', requireActiveShift, async (req, res) => {
   const { customerId, loanId } = req.params;
   const { userId, redemptionFee } = req.body;
 
@@ -2283,7 +2283,7 @@ app.post('/customers/:customerId/loans/:loanId/redeem', async (req, res) => {
 });
 
 // FORFEIT LOAN FOR CUSTOMER - POST /customers/:customerId/loans/:loanId/forfeit
-app.post('/customers/:customerId/loans/:loanId/forfeit', async (req, res) => {
+app.post('/customers/:customerId/loans/:loanId/forfeit', requireActiveShift, async (req, res) => {
   const { customerId, loanId } = req.params;
   const { userId } = req.body;
 
@@ -2360,7 +2360,7 @@ app.post('/customers/:customerId/loans/:loanId/forfeit', async (req, res) => {
 });
 
 // REACTIVATE FORFEITED LOAN FOR CUSTOMER - POST /customers/:customerId/loans/:loanId/reactivate
-app.post('/customers/:customerId/loans/:loanId/reactivate', async (req, res) => {
+app.post('/customers/:customerId/loans/:loanId/reactivate', requireActiveShift, async (req, res) => {
   const { customerId, loanId } = req.params;
   const { reactivatedByUserId, reactivatedByUsername, reactivationDate } = req.body;
 
@@ -2447,7 +2447,7 @@ app.post('/customers/:customerId/loans/:loanId/reactivate', async (req, res) => 
 });
 
 // EXTEND DUE DATE FOR CUSTOMER LOAN - POST /customers/:customerId/loans/:loanId/extend-due-date
-app.post('/customers/:customerId/loans/:loanId/extend-due-date', async (req, res) => {
+app.post('/customers/:customerId/loans/:loanId/extend-due-date', requireActiveShift, async (req, res) => {
   const { customerId, loanId } = req.params;
   const { extendDays, extendedByUserId, extendedByUsername } = req.body;
 
@@ -2528,7 +2528,7 @@ app.post('/customers/:customerId/loans/:loanId/extend-due-date', async (req, res
 
 
 // APPLY DISCOUNT TO LOAN - POST /customers/:customerId/loans/:loanId/discount
-app.post('/customers/:customerId/loans/:loanId/discount', async (req, res) => {
+app.post('/customers/:customerId/loans/:loanId/discount', requireActiveShift, async (req, res) => {
   const { customerId, loanId } = req.params;
   const { discountAmount, userId, username } = req.body;
 
@@ -2579,7 +2579,7 @@ app.post('/customers/:customerId/loans/:loanId/discount', async (req, res) => {
 });
 
 // ADD MONEY TO CUSTOMER LOAN - POST /customers/:customerId/loans/:loanId/add-money
-app.post('/customers/:customerId/loans/:loanId/add-money', async (req, res) => {
+app.post('/customers/:customerId/loans/:loanId/add-money', requireActiveShift, async (req, res) => {
   const { customerId, loanId } = req.params;
   const { amount } = req.body;
 
@@ -3343,6 +3343,36 @@ const authorizeRole = (...allowedRoles) => {
     console.log(`📊 Report access by user ${req.user.id} to ${req.path}`);
     next();
   };
+};
+
+// Check if user has an active shift - required for all loan/payment activities
+const requireActiveShift = async (req, res, next) => {
+  try {
+    const userId = req.user?.user_id || req.user?.id;
+    
+    if (!userId) {
+      return res.status(401).json({ message: 'User not authenticated' });
+    }
+
+    // Check if user has an active shift (shift_end_time is NULL)
+    const shiftCheck = await pool.query(
+      'SELECT id FROM shift_management WHERE user_id = $1 AND shift_end_time IS NULL LIMIT 1',
+      [userId]
+    );
+
+    if (shiftCheck.rows.length === 0) {
+      return res.status(403).json({ 
+        message: 'No active shift. Please start a shift before performing any activities.',
+        code: 'NO_ACTIVE_SHIFT'
+      });
+    }
+
+    console.log(`✅ Active shift verified for user ${userId}`);
+    next();
+  } catch (err) {
+    console.error('Error checking active shift:', err);
+    res.status(500).json({ message: 'Error verifying shift status' });
+  }
 };
 
 // ======================== CASH REPORT ========================
