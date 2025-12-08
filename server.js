@@ -2801,16 +2801,22 @@ app.post('/start-shift', async (req, res) => {
 
 // GET CURRENT SHIFT - Get active shift for user (query parameter version)
 app.get('/current-shift', async (req, res) => {
-  const { userId } = req.query;
+  let { userId } = req.query;
 
   try {
-    if (!userId) {
+    if (!userId || userId === 'undefined') {
       return res.status(400).json({ message: 'User ID is required' });
+    }
+
+    // Convert to integer
+    const userIdNum = parseInt(userId, 10);
+    if (isNaN(userIdNum)) {
+      return res.status(400).json({ message: 'Invalid User ID format' });
     }
 
     const result = await pool.query(
       'SELECT * FROM shift_management WHERE user_id = $1 AND shift_end_time IS NULL ORDER BY id DESC LIMIT 1',
-      [userId]
+      [userIdNum]
     );
 
     if (result.rows.length === 0) {
@@ -2826,16 +2832,22 @@ app.get('/current-shift', async (req, res) => {
 
 // GET CURRENT SHIFT - Get active shift for user (path parameter version)
 app.get('/current-shift/:userId', async (req, res) => {
-  const { userId } = req.params;
+  let { userId } = req.params;
 
   try {
-    if (!userId) {
+    if (!userId || userId === 'undefined') {
       return res.status(400).json({ message: 'User ID is required' });
+    }
+
+    // Convert to integer
+    const userIdNum = parseInt(userId, 10);
+    if (isNaN(userIdNum)) {
+      return res.status(400).json({ message: 'Invalid User ID format' });
     }
 
     const result = await pool.query(
       'SELECT * FROM shift_management WHERE user_id = $1 AND shift_end_time IS NULL ORDER BY id DESC LIMIT 1',
-      [userId]
+      [userIdNum]
     );
 
     if (result.rows.length === 0) {
