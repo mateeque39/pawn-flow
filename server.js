@@ -458,7 +458,7 @@ app.get('/payment-history', async (req, res) => {
 
 
 // ---------------------------- CREATE LOAN ----------------------------
-app.post('/create-loan', requireActiveShift, async (req, res) => {
+app.post('/create-loan', authenticateToken, requireActiveShift, async (req, res) => {
   try {
     // Map request body (handles both camelCase and snake_case)
     const mapped = validators.mapRequestToDb(req.body);
@@ -812,7 +812,7 @@ app.get('/search-loan', async (req, res) => {
 
 
 // ---------------------------- MAKE PAYMENT ----------------------------
-app.post('/make-payment', requireActiveShift, async (req, res) => {
+app.post('/make-payment', authenticateToken, requireActiveShift, async (req, res) => {
   const { loanId, paymentMethod, paymentAmount, userId } = req.body;
 
   try {
@@ -1924,7 +1924,7 @@ const ensureInterestAmount = (loan) => {
 // ======================== CUSTOMER-CENTRIC LOAN MANAGEMENT ========================
 
 // CREATE LOAN FOR CUSTOMER - POST /customers/:customerId/loans
-app.post('/customers/:customerId/loans', requireActiveShift, async (req, res) => {
+app.post('/customers/:customerId/loans', authenticateToken, requireActiveShift, async (req, res) => {
   try {
     const { customerId } = req.params;
     const mapped = validators.mapRequestToDb(req.body);
@@ -2210,7 +2210,7 @@ app.get('/customers/:customerId/loans/search', async (req, res) => {
 });
 
 // MAKE PAYMENT FOR CUSTOMER LOAN - POST /customers/:customerId/loans/:loanId/payment
-app.post('/customers/:customerId/loans/:loanId/payment', requireActiveShift, async (req, res) => {
+app.post('/customers/:customerId/loans/:loanId/payment', authenticateToken, requireActiveShift, async (req, res) => {
   const { customerId, loanId } = req.params;
   const { paymentMethod, paymentAmount, userId } = req.body;
 
@@ -2290,7 +2290,7 @@ app.post('/customers/:customerId/loans/:loanId/payment', requireActiveShift, asy
 });
 
 // REDEEM LOAN FOR CUSTOMER - POST /customers/:customerId/loans/:loanId/redeem
-app.post('/customers/:customerId/loans/:loanId/redeem', requireActiveShift, async (req, res) => {
+app.post('/customers/:customerId/loans/:loanId/redeem', authenticateToken, requireActiveShift, async (req, res) => {
   const { customerId, loanId } = req.params;
   const { userId, redemptionFee } = req.body;
 
@@ -2360,7 +2360,7 @@ app.post('/customers/:customerId/loans/:loanId/redeem', requireActiveShift, asyn
 });
 
 // FORFEIT LOAN FOR CUSTOMER - POST /customers/:customerId/loans/:loanId/forfeit
-app.post('/customers/:customerId/loans/:loanId/forfeit', requireActiveShift, async (req, res) => {
+app.post('/customers/:customerId/loans/:loanId/forfeit', authenticateToken, requireActiveShift, async (req, res) => {
   const { customerId, loanId } = req.params;
   const { userId } = req.body;
 
@@ -2524,7 +2524,7 @@ app.post('/customers/:customerId/loans/:loanId/reactivate', requireActiveShift, 
 });
 
 // EXTEND DUE DATE FOR CUSTOMER LOAN - POST /customers/:customerId/loans/:loanId/extend-due-date
-app.post('/customers/:customerId/loans/:loanId/extend-due-date', requireActiveShift, async (req, res) => {
+app.post('/customers/:customerId/loans/:loanId/extend-due-date', authenticateToken, requireActiveShift, async (req, res) => {
   const { customerId, loanId } = req.params;
   const { extendDays, extendedByUserId, extendedByUsername } = req.body;
 
