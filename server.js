@@ -57,6 +57,13 @@ console.log(`✅ JWT_SECRET configured: ${JWT_SECRET.length} characters`);
 // Configure port
 const PORT = process.env.PORT || 5000;
 
+// Validate DATABASE_URL
+if (!process.env.DATABASE_URL) {
+  console.error('❌ FATAL: DATABASE_URL environment variable is not set!');
+  console.error('Please configure DATABASE_URL in your environment.');
+  process.exit(1);
+}
+
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
@@ -4839,9 +4846,11 @@ async function initializeDatabase() {
   }
 }
 
-// Initialize database before starting server
+// Initialize database in background (don't block server startup)
 initializeDatabase().then(() => {
-  console.log('✅ Database initialized');
+  console.log('✅ Database initialization complete');
+}).catch((err) => {
+  console.warn('⚠️  Database initialization failed:', err.message);
 });
 
 // Start HTTP server
