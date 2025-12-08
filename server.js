@@ -34,9 +34,6 @@ app.use(cors({
   maxAge: 86400
 }));
 
-// Handle preflight requests
-app.options('*', cors());
-
 // Configure JWT secret
 let JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
