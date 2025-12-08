@@ -2909,7 +2909,7 @@ app.post('/end-shift', async (req, res) => {
     const paymentsResult = await pool.query(
       `SELECT COALESCE(SUM(payment_amount), 0) AS total_payments 
        FROM payment_history 
-       WHERE created_by = $1 AND payment_date > $2 AND LOWER(payment_method) = 'cash'`,
+       WHERE created_by = $1 AND payment_date >= $2 AND LOWER(payment_method) = 'cash'`,
       [userId, transactionBoundary]
     );
 
@@ -2918,7 +2918,7 @@ app.post('/end-shift', async (req, res) => {
     const loansGivenResult = await pool.query(
       `SELECT COALESCE(SUM(loan_amount), 0) AS total_loans_given 
        FROM loans 
-       WHERE created_by = $1 AND loan_issued_date > $2`,
+       WHERE created_by = $1 AND loan_issued_date >= $2`,
       [userId, transactionBoundary]
     );
 
