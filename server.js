@@ -3724,22 +3724,11 @@ app.get('/loan-pdf/:loanId', async (req, res) => {
     const result = await pool.query(
       `SELECT 
         l.*,
-        c.id as customer_id,
         c.first_name,
-        c.last_name,
-        c.email,
-        c.phone_number as mobile_phone,
-        c.home_phone,
-        c.date_of_birth as birthdate,
-        c.street_address,
-        c.city,
-        c.state,
-        c.postal_code as zipcode,
-        c.id_type,
-        c.id_number
-      FROM loans l
-      LEFT JOIN customers c ON l.customer_id = c.id
-      WHERE l.id = $1`,
+        c.last_name
+       FROM loans l
+       LEFT JOIN customers c ON l.customer_id = c.id
+       WHERE l.id = $1`,
       [loanId]
     );
 
