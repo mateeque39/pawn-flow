@@ -155,18 +155,25 @@ const requireActiveShift = async (req, res, next) => {
 
     // Check if user has an active shift (shift_end_time is NULL)
     const shiftCheck = await pool.query(
-      'SELECT id FROM shift_management WHERE user_id = $1 AND shift_end_time IS NULL LIMIT 1',
+      'SELECT id, shift_start_time, shift_end_time FROM shift_management WHERE user_id = $1 AND shift_end_time IS NULL ORDER BY id DESC LIMIT 1',
       [userId]
     );
 
     if (shiftCheck.rows.length === 0) {
+      // Debug: Log recent shifts to understand why none are active
+      const recentShifts = await pool.query(
+        'SELECT id, shift_start_time, shift_end_time FROM shift_management WHERE user_id = $1 ORDER BY id DESC LIMIT 3',
+        [userId]
+      );
+      console.warn(`⚠️  No active shift for user ${userId}. Recent shifts:`, recentShifts.rows);
+      
       return res.status(403).json({ 
         message: 'No active shift. Please start a shift before performing any activities.',
         code: 'NO_ACTIVE_SHIFT'
       });
     }
 
-    console.log(`✅ Active shift verified for user ${userId}`);
+    console.log(`✅ Active shift verified for user ${userId} - Shift ID: ${shiftCheck.rows[0].id}, Started: ${shiftCheck.rows[0].shift_start_time}`);
     next();
   } catch (err) {
     console.error('Error checking active shift:', err);
