@@ -2890,22 +2890,25 @@ app.post('/end-shift', async (req, res) => {
 
     const shift = shiftResult.rows[0];
 
+    // Get the current timestamp at the time of closing
+    const closeTimestamp = new Date();
+
     // Get CASH payments received ONLY during this shift period
-    // Count payments from shift start until NOW
+    // Count payments from shift start until NOW (at close time)
     const paymentsResult = await pool.query(
       `SELECT COALESCE(SUM(payment_amount), 0) AS total_payments 
        FROM payment_history 
-       WHERE created_by = $1 AND payment_date >= $2 AND payment_date <= CURRENT_TIMESTAMP AND LOWER(payment_method) = 'cash'`,
-      [userId, shift.shift_start_time]
+       WHERE created_by = $1 AND payment_date >= $2 AND payment_date <= $3 AND LOWER(payment_method) = 'cash'`,
+      [userId, shift.shift_start_time, closeTimestamp]
     );
 
     // Get all loans given ONLY during this shift period
-    // Count loans from shift start until NOW
+    // Count loans from shift start until NOW (at close time)
     const loansGivenResult = await pool.query(
       `SELECT COALESCE(SUM(loan_amount), 0) AS total_loans_given 
        FROM loans 
-       WHERE created_by = $1 AND loan_issued_date >= $2 AND loan_issued_date <= CURRENT_TIMESTAMP`,
-      [userId, shift.shift_start_time]
+       WHERE created_by = $1 AND loan_issued_date >= $2 AND loan_issued_date <= $3`,
+      [userId, shift.shift_start_time, closeTimestamp]
     );
 
     const totalCashPayments = parseFloat(paymentsResult.rows[0].total_payments || 0);
