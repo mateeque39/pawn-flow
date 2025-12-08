@@ -282,6 +282,25 @@ app.post('/register', async (req, res) => {
   }
 });
 
+// Health check endpoint
+app.get('/health', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT 1');
+    res.status(200).json({ 
+      status: 'healthy', 
+      timestamp: new Date().toISOString(),
+      port: PORT,
+      environment: process.env.NODE_ENV || 'development'
+    });
+  } catch (err) {
+    res.status(503).json({ 
+      status: 'unhealthy',
+      error: err.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
 // ---------------------------- LOGIN ----------------------------
 app.post('/login', async (req, res) => {
   const { username, password } = req.body;
@@ -4829,10 +4848,14 @@ initializeDatabase().then(() => {
 console.log('⚙️  Starting PawnFlow Server...');
 console.log('🔌 Listening on port', PORT);
 
-const server = app.listen(PORT, () => {
+const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Server is running on port ${PORT}`);
   console.log('✅ Server started successfully');
 });
+
+// Enable keepalive to prevent connection timeouts
+server.keepAliveTimeout = 65000;
+server.headersTimeout = 66000;
 
 // Handle server errors
 server.on('error', (err) => {
