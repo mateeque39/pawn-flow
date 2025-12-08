@@ -99,6 +99,81 @@ cron.schedule('0 0 * * *', async () => {
   }
 });
 
+// ======================== MIDDLEWARE DEFINITIONS ========================
+
+// Verify JWT token and extract user info
+const authenticateToken = (req, res, next) => {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
+
+  if (!token) {
+    console.warn('⚠️  Unauthorized access attempt - no token provided');
+    return res.status(401).json({ message: 'Access denied. No token provided.' });
+  }
+
+  try {
+    // Use the configured JWT_SECRET from app startup, not environment variable
+    if (!JWT_SECRET || JWT_SECRET.length < 32) {
+      console.error('❌ JWT_SECRET not properly configured');
+      return res.status(500).json({ message: 'Server configuration error' });
+    }
+    const decoded = jwt.verify(token, JWT_SECRET);
+    req.user = decoded;
+    console.log(`✅ Token verified for user ID: ${decoded.user_id || decoded.id}`);
+    next();
+  } catch (err) {
+    console.warn('⚠️  Invalid token:', err.message);
+    return res.status(403).json({ message: 'Invalid or expired token' });
+  }
+};
+
+// Check if user has admin or manager role
+const authorizeRole = (...allowedRoles) => {
+  return (req, res, next) => {
+    // For now, we'll allow all authenticated users to access reports
+    // In production, you might check req.user.role against allowedRoles
+    if (!req.user) {
+      return res.status(401).json({ message: 'User not authenticated' });
+    }
+    
+    // Log the access
+    console.log(`📊 Report access by user ${req.user.id} to ${req.path}`);
+    next();
+  };
+};
+
+// Check if user has an active shift - required for all loan/payment activities
+const requireActiveShift = async (req, res, next) => {
+  try {
+    const userId = req.user?.user_id || req.user?.id;
+    
+    if (!userId) {
+      return res.status(401).json({ message: 'User not authenticated' });
+    }
+
+    // Check if user has an active shift (shift_end_time is NULL)
+    const shiftCheck = await pool.query(
+      'SELECT id FROM shift_management WHERE user_id = $1 AND shift_end_time IS NULL LIMIT 1',
+      [userId]
+    );
+
+    if (shiftCheck.rows.length === 0) {
+      return res.status(403).json({ 
+        message: 'No active shift. Please start a shift before performing any activities.',
+        code: 'NO_ACTIVE_SHIFT'
+      });
+    }
+
+    console.log(`✅ Active shift verified for user ${userId}`);
+    next();
+  } catch (err) {
+    console.error('Error checking active shift:', err);
+    res.status(500).json({ message: 'Error verifying shift status' });
+  }
+};
+
+// ======================== END MIDDLEWARE DEFINITIONS ========================
+
 
 
 
@@ -3301,79 +3376,6 @@ app.get('/detailed-loans-breakdown', async (req, res) => {
 // ======================== END DETAILED LOANS BREAKDOWN ========================
 
 // ======================== END SHIFT MANAGEMENT ========================
-
-// ======================== AUTHENTICATION MIDDLEWARE FOR REPORTS ========================
-
-// Verify JWT token and extract user info
-const authenticateToken = (req, res, next) => {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
-
-  if (!token) {
-    console.warn('⚠️  Unauthorized access attempt - no token provided');
-    return res.status(401).json({ message: 'Access denied. No token provided.' });
-  }
-
-  try {
-    // Use the configured JWT_SECRET from app startup, not environment variable
-    if (!JWT_SECRET || JWT_SECRET.length < 32) {
-      console.error('❌ JWT_SECRET not properly configured');
-      return res.status(500).json({ message: 'Server configuration error' });
-    }
-    const decoded = jwt.verify(token, JWT_SECRET);
-    req.user = decoded;
-    console.log(`✅ Token verified for user ID: ${decoded.user_id || decoded.id}`);
-    next();
-  } catch (err) {
-    console.warn('⚠️  Invalid token:', err.message);
-    return res.status(403).json({ message: 'Invalid or expired token' });
-  }
-};
-
-// Check if user has admin or manager role
-const authorizeRole = (...allowedRoles) => {
-  return (req, res, next) => {
-    // For now, we'll allow all authenticated users to access reports
-    // In production, you might check req.user.role against allowedRoles
-    if (!req.user) {
-      return res.status(401).json({ message: 'User not authenticated' });
-    }
-    
-    // Log the access
-    console.log(`📊 Report access by user ${req.user.id} to ${req.path}`);
-    next();
-  };
-};
-
-// Check if user has an active shift - required for all loan/payment activities
-const requireActiveShift = async (req, res, next) => {
-  try {
-    const userId = req.user?.user_id || req.user?.id;
-    
-    if (!userId) {
-      return res.status(401).json({ message: 'User not authenticated' });
-    }
-
-    // Check if user has an active shift (shift_end_time is NULL)
-    const shiftCheck = await pool.query(
-      'SELECT id FROM shift_management WHERE user_id = $1 AND shift_end_time IS NULL LIMIT 1',
-      [userId]
-    );
-
-    if (shiftCheck.rows.length === 0) {
-      return res.status(403).json({ 
-        message: 'No active shift. Please start a shift before performing any activities.',
-        code: 'NO_ACTIVE_SHIFT'
-      });
-    }
-
-    console.log(`✅ Active shift verified for user ${userId}`);
-    next();
-  } catch (err) {
-    console.error('Error checking active shift:', err);
-    res.status(500).json({ message: 'Error verifying shift status' });
-  }
-};
 
 // ======================== CASH REPORT ========================
 
