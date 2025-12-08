@@ -2890,25 +2890,36 @@ app.post('/end-shift', async (req, res) => {
 
     const shift = shiftResult.rows[0];
 
-    // Get the current timestamp at the time of closing
-    const closeTimestamp = new Date();
+    // Find the previous shift to establish exact boundary
+    // Transactions must be AFTER previous shift ended, or AFTER shift start if no previous shift
+    const prevShiftResult = await pool.query(
+      `SELECT shift_end_time FROM shift_management 
+       WHERE user_id = $1 AND id < $2 AND shift_end_time IS NOT NULL
+       ORDER BY id DESC LIMIT 1`,
+      [userId, shift.id]
+    );
+
+    // Set the lower boundary: either after previous shift, or at shift start
+    const lowerBoundary = prevShiftResult.rows.length > 0
+      ? prevShiftResult.rows[0].shift_end_time
+      : shift.shift_start_time;
 
     // Get CASH payments received ONLY during this shift period
-    // Count payments from shift start until NOW (at close time)
+    // Only count payments AFTER the lower boundary (previous shift end or shift start)
     const paymentsResult = await pool.query(
       `SELECT COALESCE(SUM(payment_amount), 0) AS total_payments 
        FROM payment_history 
-       WHERE created_by = $1 AND payment_date >= $2 AND payment_date <= $3 AND LOWER(payment_method) = 'cash'`,
-      [userId, shift.shift_start_time, closeTimestamp]
+       WHERE created_by = $1 AND payment_date > $2 AND LOWER(payment_method) = 'cash'`,
+      [userId, lowerBoundary]
     );
 
     // Get all loans given ONLY during this shift period
-    // Count loans from shift start until NOW (at close time)
+    // Only count loans AFTER the lower boundary (previous shift end or shift start)
     const loansGivenResult = await pool.query(
       `SELECT COALESCE(SUM(loan_amount), 0) AS total_loans_given 
        FROM loans 
-       WHERE created_by = $1 AND loan_issued_date >= $2 AND loan_issued_date <= $3`,
-      [userId, shift.shift_start_time, closeTimestamp]
+       WHERE created_by = $1 AND loan_issued_date > $2`,
+      [userId, lowerBoundary]
     );
 
     const totalCashPayments = parseFloat(paymentsResult.rows[0].total_payments || 0);
