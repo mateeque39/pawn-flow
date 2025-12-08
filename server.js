@@ -2890,19 +2890,19 @@ app.post('/end-shift', async (req, res) => {
 
     const shift = shiftResult.rows[0];
 
-    // Get CASH payments received only (not card, check, etc)
+    // Get CASH payments received only during this shift (not card, check, etc)
     const paymentsResult = await pool.query(
       `SELECT COALESCE(SUM(payment_amount), 0) AS total_payments 
        FROM payment_history 
-       WHERE created_by = $1 AND payment_date >= $2 AND LOWER(payment_method) = 'cash'`,
+       WHERE created_by = $1 AND payment_date >= $2 AND payment_date < CURRENT_TIMESTAMP + INTERVAL '1 day' AND LOWER(payment_method) = 'cash'`,
       [userId, shift.shift_start_time]
     );
 
-    // Get all loans given during this shift
+    // Get all loans given during this specific shift (between shift start and end times)
     const loansGivenResult = await pool.query(
       `SELECT COALESCE(SUM(loan_amount), 0) AS total_loans_given 
        FROM loans 
-       WHERE created_by = $1 AND loan_issued_date >= DATE($2)`,
+       WHERE created_by = $1 AND loan_issued_date >= $2 AND loan_issued_date < CURRENT_TIMESTAMP + INTERVAL '1 day'`,
       [userId, shift.shift_start_time]
     );
 
