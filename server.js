@@ -2794,11 +2794,11 @@ app.post('/end-shift', async (req, res) => {
 
     const shift = shiftResult.rows[0];
 
-    // Get all transactions for this shift - payments received
+    // Get CASH payments received only (not card, check, etc)
     const paymentsResult = await pool.query(
       `SELECT COALESCE(SUM(payment_amount), 0) AS total_payments 
        FROM payment_history 
-       WHERE created_by = $1 AND payment_date >= $2`,
+       WHERE created_by = $1 AND payment_date >= $2 AND LOWER(payment_method) = 'cash'`,
       [userId, shift.shift_start_time]
     );
 
@@ -2810,12 +2810,13 @@ app.post('/end-shift', async (req, res) => {
       [userId, shift.shift_start_time]
     );
 
-    const totalPayments = parseFloat(paymentsResult.rows[0].total_payments || 0);
+    const totalCashPayments = parseFloat(paymentsResult.rows[0].total_payments || 0);
     const totalLoansGiven = parseFloat(loansGivenResult.rows[0].total_loans_given || 0);
     const openingBalance = parseFloat(shift.opening_balance);
 
-    // Calculate expected balance: opening + payments - loans
-    const expectedBalance = openingBalance + totalPayments - totalLoansGiven;
+    // Calculate expected balance: opening + cash payments - loans given
+    // Non-cash payments (card, check) don't affect cash balance
+    const expectedBalance = openingBalance + totalCashPayments - totalLoansGiven;
     const closingBalanceNum = parseFloat(closingBalance);
     const difference = closingBalanceNum - expectedBalance;
     const isBalanced = Math.abs(difference) < 0.01; // Allow for floating point errors
@@ -2833,7 +2834,7 @@ app.post('/end-shift', async (req, res) => {
            notes = $7
        WHERE id = $8
        RETURNING *`,
-      [closingBalanceNum, totalPayments, totalLoansGiven, expectedBalance, difference, isBalanced, notes || null, shift.id]
+      [closingBalanceNum, totalCashPayments, totalLoansGiven, expectedBalance, difference, isBalanced, notes || null, shift.id]
     );
 
     res.status(200).json({
@@ -2842,7 +2843,7 @@ app.post('/end-shift', async (req, res) => {
       summary: {
         openingBalance: openingBalance,
         closingBalance: closingBalanceNum,
-        totalPaymentsReceived: totalPayments,
+        totalCashPaymentsReceived: totalCashPayments,
         totalLoansGiven: totalLoansGiven,
         expectedBalance: expectedBalance,
         actualDifference: difference,
