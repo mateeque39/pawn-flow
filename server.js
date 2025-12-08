@@ -34,6 +34,17 @@ app.use(cors({
   maxAge: 86400
 }));
 
+// Global request timeout middleware (60 seconds for most requests, 120 for PDF operations)
+app.use((req, res, next) => {
+  // Set timeout based on endpoint type
+  const timeout = req.path.includes('pdf') || req.path.includes('receipt') ? 120000 : 60000;
+  req.setTimeout(timeout, () => {
+    console.error(`⏱️  Request timeout for ${req.method} ${req.path} after ${timeout}ms`);
+    res.status(408).json({ message: 'Request timeout' });
+  });
+  next();
+});
+
 // Configure JWT secret
 let JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
@@ -49,6 +60,10 @@ const PORT = process.env.PORT || 5000;
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+  max: 20,                           // Maximum pool size
+  idleTimeoutMillis: 30000,         // Close idle connections after 30 seconds
+  connectionTimeoutMillis: 10000,   // Fail connection attempt after 10 seconds
+  statement_timeout: 30000,         // SQL statement timeout (30 seconds)
 });
 
 // Add pool error handlers
@@ -102,6 +117,16 @@ cron.schedule('0 0 * * *', async () => {
 });
 
 // ======================== MIDDLEWARE DEFINITIONS ========================
+
+// Helper function to execute query with timeout
+const queryWithTimeout = async (pool, queryText, params, timeoutMs = 10000) => {
+  return Promise.race([
+    pool.query(queryText, params),
+    new Promise((_, reject) => 
+      setTimeout(() => reject(new Error(`Query timeout after ${timeoutMs}ms`)), timeoutMs)
+    )
+  ]);
+};
 
 // Verify JWT token and extract user info
 const authenticateToken = (req, res, next) => {
@@ -157,30 +182,43 @@ const requireActiveShift = async (req, res, next) => {
     // Retry up to 3 times with small delay to handle transaction delays
     let shiftCheck = null;
     for (let attempt = 0; attempt < 3; attempt++) {
-      shiftCheck = await pool.query(
-        'SELECT id, shift_start_time, shift_end_time FROM shift_management WHERE user_id = $1 AND shift_end_time IS NULL ORDER BY id DESC LIMIT 1',
-        [userId]
-      );
-      
-      if (shiftCheck.rows.length > 0) {
-        console.log(`✅ Active shift verified for user ${userId} - Shift ID: ${shiftCheck.rows[0].id}, Started: ${shiftCheck.rows[0].shift_start_time}`);
-        return next();
-      }
-      
-      // If no shift found and this isn't the last attempt, wait a bit and retry
-      if (attempt < 2) {
-        await new Promise(resolve => setTimeout(resolve, 100)); // 100ms delay
+      try {
+        shiftCheck = await queryWithTimeout(
+          pool,
+          'SELECT id, shift_start_time, shift_end_time FROM shift_management WHERE user_id = $1 AND shift_end_time IS NULL ORDER BY id DESC LIMIT 1',
+          [userId],
+          8000 // 8 second timeout per query
+        );
+        
+        if (shiftCheck.rows.length > 0) {
+          console.log(`✅ Active shift verified for user ${userId} - Shift ID: ${shiftCheck.rows[0].id}, Started: ${shiftCheck.rows[0].shift_start_time}`);
+          return next();
+        }
+        
+        // If no shift found and this isn't the last attempt, wait a bit and retry
+        if (attempt < 2) {
+          await new Promise(resolve => setTimeout(resolve, 100)); // 100ms delay
+        }
+      } catch (queryErr) {
+        console.error(`Query attempt ${attempt + 1} failed:`, queryErr.message);
+        if (attempt === 2) throw queryErr; // Throw on final attempt
       }
     }
 
     // After all retries, still no shift found
     if (shiftCheck.rows.length === 0) {
       // Debug: Log recent shifts to understand why none are active
-      const recentShifts = await pool.query(
-        'SELECT id, shift_start_time, shift_end_time FROM shift_management WHERE user_id = $1 ORDER BY id DESC LIMIT 3',
-        [userId]
-      );
-      console.warn(`⚠️  No active shift for user ${userId} (after 3 retries). Recent shifts:`, recentShifts.rows);
+      try {
+        const recentShifts = await queryWithTimeout(
+          pool,
+          'SELECT id, shift_start_time, shift_end_time FROM shift_management WHERE user_id = $1 ORDER BY id DESC LIMIT 3',
+          [userId],
+          5000
+        );
+        console.warn(`⚠️  No active shift for user ${userId} (after 3 retries). Recent shifts:`, recentShifts.rows);
+      } catch (err) {
+        console.warn(`⚠️  No active shift for user ${userId} (after 3 retries). Could not fetch recent shifts:`, err.message);
+      }
       
       return res.status(403).json({ 
         message: 'No active shift. Please start a shift before performing any activities.',
@@ -2793,24 +2831,40 @@ app.post('/start-shift', async (req, res) => {
       return res.status(400).json({ message: 'Invalid opening balance' });
     }
 
-    // Check if there's an active shift for this user
-    const activeShiftCheck = await pool.query(
-      'SELECT * FROM shift_management WHERE user_id = $1 AND shift_end_time IS NULL',
-      [userId]
-    );
+    // Check if there's an active shift for this user (with timeout)
+    let activeShiftCheck;
+    try {
+      activeShiftCheck = await queryWithTimeout(
+        pool,
+        'SELECT * FROM shift_management WHERE user_id = $1 AND shift_end_time IS NULL',
+        [userId],
+        8000
+      );
+    } catch (err) {
+      console.error('Timeout checking active shift:', err.message);
+      return res.status(503).json({ message: 'Database service temporarily unavailable' });
+    }
 
     if (activeShiftCheck.rows.length > 0) {
       console.warn(`⚠️  User ${userId} already has active shift:`, activeShiftCheck.rows[0]);
       return res.status(400).json({ message: 'User already has an active shift. Please close the previous shift first.' });
     }
 
-    // Insert new shift record
-    const result = await pool.query(
-      `INSERT INTO shift_management (user_id, shift_start_time, opening_balance)
-       VALUES ($1, CURRENT_TIMESTAMP, $2)
-       RETURNING *`,
-      [userId, parseFloat(openingBalance)]
-    );
+    // Insert new shift record (with timeout)
+    let result;
+    try {
+      result = await queryWithTimeout(
+        pool,
+        `INSERT INTO shift_management (user_id, shift_start_time, opening_balance)
+         VALUES ($1, CURRENT_TIMESTAMP, $2)
+         RETURNING *`,
+        [userId, parseFloat(openingBalance)],
+        8000
+      );
+    } catch (err) {
+      console.error('Timeout creating shift:', err.message);
+      return res.status(503).json({ message: 'Database service temporarily unavailable' });
+    }
 
     console.log(`✅ Shift ${result.rows[0].id} created for user ${userId}:`, {
       id: result.rows[0].id,
@@ -2845,10 +2899,18 @@ app.get('/current-shift', async (req, res) => {
       return res.status(400).json({ message: 'Invalid User ID format' });
     }
 
-    const result = await pool.query(
-      'SELECT * FROM shift_management WHERE user_id = $1 AND shift_end_time IS NULL ORDER BY id DESC LIMIT 1',
-      [userIdNum]
-    );
+    let result;
+    try {
+      result = await queryWithTimeout(
+        pool,
+        'SELECT * FROM shift_management WHERE user_id = $1 AND shift_end_time IS NULL ORDER BY id DESC LIMIT 1',
+        [userIdNum],
+        8000
+      );
+    } catch (err) {
+      console.error('Timeout fetching current shift:', err.message);
+      return res.status(503).json({ message: 'Database service temporarily unavailable' });
+    }
 
     if (result.rows.length === 0) {
       return res.status(404).json({ message: 'No active shift found' });
@@ -2876,10 +2938,18 @@ app.get('/current-shift/:userId', async (req, res) => {
       return res.status(400).json({ message: 'Invalid User ID format' });
     }
 
-    const result = await pool.query(
-      'SELECT * FROM shift_management WHERE user_id = $1 AND shift_end_time IS NULL ORDER BY id DESC LIMIT 1',
-      [userIdNum]
-    );
+    let result;
+    try {
+      result = await queryWithTimeout(
+        pool,
+        'SELECT * FROM shift_management WHERE user_id = $1 AND shift_end_time IS NULL ORDER BY id DESC LIMIT 1',
+        [userIdNum],
+        8000
+      );
+    } catch (err) {
+      console.error('Timeout fetching current shift:', err.message);
+      return res.status(503).json({ message: 'Database service temporarily unavailable' });
+    }
 
     if (result.rows.length === 0) {
       return res.status(404).json({ message: 'No active shift found' });
@@ -2902,11 +2972,19 @@ app.post('/end-shift', async (req, res) => {
       return res.status(400).json({ message: 'Invalid closing balance' });
     }
 
-    // Get active shift
-    const shiftResult = await pool.query(
-      'SELECT * FROM shift_management WHERE user_id = $1 AND shift_end_time IS NULL ORDER BY id DESC LIMIT 1',
-      [userId]
-    );
+    // Get active shift (with timeout)
+    let shiftResult;
+    try {
+      shiftResult = await queryWithTimeout(
+        pool,
+        'SELECT * FROM shift_management WHERE user_id = $1 AND shift_end_time IS NULL ORDER BY id DESC LIMIT 1',
+        [userId],
+        8000
+      );
+    } catch (err) {
+      console.error('Timeout fetching shift:', err.message);
+      return res.status(503).json({ message: 'Database service temporarily unavailable' });
+    }
 
     if (shiftResult.rows.length === 0) {
       return res.status(404).json({ message: 'No active shift found' });
@@ -2914,21 +2992,37 @@ app.post('/end-shift', async (req, res) => {
 
     const shift = shiftResult.rows[0];
 
-    // Get CASH payments received only (not card, check, etc)
-    const paymentsResult = await pool.query(
-      `SELECT COALESCE(SUM(payment_amount), 0) AS total_payments 
-       FROM payment_history 
-       WHERE created_by = $1 AND payment_date >= $2 AND LOWER(payment_method) = 'cash'`,
-      [userId, shift.shift_start_time]
-    );
+    // Get CASH payments received only (not card, check, etc) (with timeout)
+    let paymentsResult;
+    try {
+      paymentsResult = await queryWithTimeout(
+        pool,
+        `SELECT COALESCE(SUM(payment_amount), 0) AS total_payments 
+         FROM payment_history 
+         WHERE created_by = $1 AND payment_date >= $2 AND LOWER(payment_method) = 'cash'`,
+        [userId, shift.shift_start_time],
+        8000
+      );
+    } catch (err) {
+      console.error('Timeout fetching payments:', err.message);
+      return res.status(503).json({ message: 'Database service temporarily unavailable' });
+    }
 
-    // Get all loans given during this shift
-    const loansGivenResult = await pool.query(
-      `SELECT COALESCE(SUM(loan_amount), 0) AS total_loans_given 
-       FROM loans 
-       WHERE created_by = $1 AND loan_issued_date >= DATE($2)`,
-      [userId, shift.shift_start_time]
-    );
+    // Get all loans given during this shift (with timeout)
+    let loansGivenResult;
+    try {
+      loansGivenResult = await queryWithTimeout(
+        pool,
+        `SELECT COALESCE(SUM(loan_amount), 0) AS total_loans_given 
+         FROM loans 
+         WHERE created_by = $1 AND loan_issued_date >= DATE($2)`,
+        [userId, shift.shift_start_time],
+        8000
+      );
+    } catch (err) {
+      console.error('Timeout fetching loans:', err.message);
+      return res.status(503).json({ message: 'Database service temporarily unavailable' });
+    }
 
     const totalCashPayments = parseFloat(paymentsResult.rows[0].total_payments || 0);
     const totalLoansGiven = parseFloat(loansGivenResult.rows[0].total_loans_given || 0);
