@@ -1898,28 +1898,22 @@ app.post('/customers/:customerId/loans', async (req, res) => {
       return res.status(400).json({ message: 'Invalid customer ID' });
     }
 
-    // Try to get customer name from existing loans or use from request
-    let customerFirstName = first_name || 'Unknown';
-    let customerLastName = last_name || 'Customer';
-
-    // If names are still placeholders, try to fetch from existing loans
-    if ((!first_name || !last_name) && customer_number) {
-      console.log('   Names not provided, checking existing loans for customer_number:', customer_number);
-      const existingLoanResult = await pool.query(
-        'SELECT first_name, last_name FROM loans WHERE customer_number = $1 LIMIT 1',
-        [customer_number]
-      );
-      
-      if (existingLoanResult.rows.length > 0) {
-        customerFirstName = existingLoanResult.rows[0].first_name;
-        customerLastName = existingLoanResult.rows[0].last_name;
-        console.log('   Found existing loan - Name:', customerFirstName, customerLastName);
-      } else {
-        console.log('   No existing loans found, will use: "Unknown Customer"');
-        customerFirstName = 'Unknown';
-        customerLastName = 'Customer';
-      }
+    // Fetch the actual customer from the database to get their real name
+    const customerResult = await pool.query(
+      'SELECT id, first_name, last_name FROM customers WHERE id = $1',
+      [customerIdNum]
+    );
+    
+    if (customerResult.rows.length === 0) {
+      return res.status(404).json({ message: 'Customer not found' });
     }
+    
+    const customer = customerResult.rows[0];
+    console.log('   ✅ Found customer:', { id: customer.id, first_name: customer.first_name, last_name: customer.last_name });
+
+    // Try to get customer name from request first, then from customer record, then fall back
+    let customerFirstName = first_name || customer.first_name || 'Unknown';
+    let customerLastName = last_name || customer.last_name || 'Customer';
     if (!loanAmount || isNaN(parseFloat(loanAmount)) || parseFloat(loanAmount) <= 0) {
       return res.status(400).json({ 
         message: 'loan_amount is required and must be a positive number'
