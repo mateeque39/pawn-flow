@@ -385,6 +385,11 @@ app.post('/create-loan', async (req, res) => {
   try {
     // Map request body (handles both camelCase and snake_case)
     const mapped = validators.mapRequestToDb(req.body);
+    
+    console.log('📝 [/create-loan] Mapped request body:');
+    console.log('   first_name:', mapped.first_name);
+    console.log('   last_name:', mapped.last_name);
+    console.log('   email:', mapped.email);
 
     // Extract all customer and loan fields
     const {
@@ -537,6 +542,9 @@ app.post('/create-loan', async (req, res) => {
     }
 
     // Step 2: Insert loan with customer_id
+    const generatedCustomerName = `${first_name} ${last_name}`;
+    console.log('✅ Inserting loan with customer_name:', generatedCustomerName);
+    
     const result = await pool.query(
       `INSERT INTO loans (
         customer_id, first_name, last_name, email, home_phone, mobile_phone, birthdate,
@@ -584,7 +592,7 @@ app.post('/create-loan', async (req, res) => {
         userId || createdByUserId || null,
         createdByUserId || userId || null,
         createdByUsername || null,
-        `${first_name} ${last_name}` // Backward compatibility
+        generatedCustomerName
       ]
     );
 
