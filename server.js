@@ -2773,6 +2773,8 @@ app.post('/start-shift', async (req, res) => {
   const { userId, openingBalance } = req.body;
 
   try {
+    console.log(`📍 Start shift request: userId=${userId}, openingBalance=${openingBalance}`);
+    
     if (!openingBalance || openingBalance < 0) {
       return res.status(400).json({ message: 'Invalid opening balance' });
     }
@@ -2784,6 +2786,7 @@ app.post('/start-shift', async (req, res) => {
     );
 
     if (activeShiftCheck.rows.length > 0) {
+      console.warn(`⚠️  User ${userId} already has active shift:`, activeShiftCheck.rows[0]);
       return res.status(400).json({ message: 'User already has an active shift. Please close the previous shift first.' });
     }
 
@@ -2794,6 +2797,13 @@ app.post('/start-shift', async (req, res) => {
        RETURNING *`,
       [userId, parseFloat(openingBalance)]
     );
+
+    console.log(`✅ Shift ${result.rows[0].id} created for user ${userId}:`, {
+      id: result.rows[0].id,
+      shift_start_time: result.rows[0].shift_start_time,
+      shift_end_time: result.rows[0].shift_end_time,
+      opening_balance: result.rows[0].opening_balance
+    });
 
     res.status(201).json({
       message: 'Shift started successfully',
