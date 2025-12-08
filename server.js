@@ -2890,36 +2890,22 @@ app.post('/end-shift', async (req, res) => {
 
     const shift = shiftResult.rows[0];
 
-    // Get the shift BEFORE this one (if any) to establish boundary
-    // This ensures we only count transactions created AFTER the previous shift ended
-    const prevShiftResult = await pool.query(
-      `SELECT shift_end_time FROM shift_management 
-       WHERE user_id = $1 AND shift_end_time IS NOT NULL AND shift_end_time < $2
-       ORDER BY shift_end_time DESC LIMIT 1`,
-      [userId, shift.shift_start_time]
-    );
-
-    // Set boundary: either the end of previous shift, or start of this shift (for first shift of the day)
-    const transactionBoundary = prevShiftResult.rows.length > 0 
-      ? prevShiftResult.rows[0].shift_end_time 
-      : shift.shift_start_time;
-
-    // Get CASH payments received only during this shift (not card, check, etc)
-    // Count only payments created AFTER the boundary (previous shift end or shift start)
+    // Get CASH payments received ONLY during this shift period
+    // Count payments from shift start until NOW
     const paymentsResult = await pool.query(
       `SELECT COALESCE(SUM(payment_amount), 0) AS total_payments 
        FROM payment_history 
-       WHERE created_by = $1 AND payment_date >= $2 AND LOWER(payment_method) = 'cash'`,
-      [userId, transactionBoundary]
+       WHERE created_by = $1 AND payment_date >= $2 AND payment_date <= CURRENT_TIMESTAMP AND LOWER(payment_method) = 'cash'`,
+      [userId, shift.shift_start_time]
     );
 
-    // Get all loans given during this specific shift
-    // Count only loans created AFTER the boundary (previous shift end or shift start)
+    // Get all loans given ONLY during this shift period
+    // Count loans from shift start until NOW
     const loansGivenResult = await pool.query(
       `SELECT COALESCE(SUM(loan_amount), 0) AS total_loans_given 
        FROM loans 
-       WHERE created_by = $1 AND loan_issued_date >= $2`,
-      [userId, transactionBoundary]
+       WHERE created_by = $1 AND loan_issued_date >= $2 AND loan_issued_date <= CURRENT_TIMESTAMP`,
+      [userId, shift.shift_start_time]
     );
 
     const totalCashPayments = parseFloat(paymentsResult.rows[0].total_payments || 0);
