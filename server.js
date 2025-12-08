@@ -154,26 +154,40 @@ const requireActiveShift = async (req, res, next) => {
     }
 
     // Check if user has an active shift (shift_end_time is NULL)
-    const shiftCheck = await pool.query(
-      'SELECT id, shift_start_time, shift_end_time FROM shift_management WHERE user_id = $1 AND shift_end_time IS NULL ORDER BY id DESC LIMIT 1',
-      [userId]
-    );
+    // Retry up to 3 times with small delay to handle transaction delays
+    let shiftCheck = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      shiftCheck = await pool.query(
+        'SELECT id, shift_start_time, shift_end_time FROM shift_management WHERE user_id = $1 AND shift_end_time IS NULL ORDER BY id DESC LIMIT 1',
+        [userId]
+      );
+      
+      if (shiftCheck.rows.length > 0) {
+        console.log(`✅ Active shift verified for user ${userId} - Shift ID: ${shiftCheck.rows[0].id}, Started: ${shiftCheck.rows[0].shift_start_time}`);
+        return next();
+      }
+      
+      // If no shift found and this isn't the last attempt, wait a bit and retry
+      if (attempt < 2) {
+        await new Promise(resolve => setTimeout(resolve, 100)); // 100ms delay
+      }
+    }
 
+    // After all retries, still no shift found
     if (shiftCheck.rows.length === 0) {
       // Debug: Log recent shifts to understand why none are active
       const recentShifts = await pool.query(
         'SELECT id, shift_start_time, shift_end_time FROM shift_management WHERE user_id = $1 ORDER BY id DESC LIMIT 3',
         [userId]
       );
-      console.warn(`⚠️  No active shift for user ${userId}. Recent shifts:`, recentShifts.rows);
+      console.warn(`⚠️  No active shift for user ${userId} (after 3 retries). Recent shifts:`, recentShifts.rows);
       
       return res.status(403).json({ 
         message: 'No active shift. Please start a shift before performing any activities.',
         code: 'NO_ACTIVE_SHIFT'
       });
     }
-
-    console.log(`✅ Active shift verified for user ${userId} - Shift ID: ${shiftCheck.rows[0].id}, Started: ${shiftCheck.rows[0].shift_start_time}`);
+    
     next();
   } catch (err) {
     console.error('Error checking active shift:', err);
