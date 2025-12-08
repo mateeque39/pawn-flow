@@ -34,17 +34,6 @@ app.use(cors({
   maxAge: 86400
 }));
 
-// Global request timeout middleware (60 seconds for most requests, 120 for PDF operations)
-app.use((req, res, next) => {
-  // Set timeout based on endpoint type
-  const timeout = req.path.includes('pdf') || req.path.includes('receipt') ? 120000 : 60000;
-  req.setTimeout(timeout, () => {
-    console.error(`⏱️  Request timeout for ${req.method} ${req.path} after ${timeout}ms`);
-    res.status(408).json({ message: 'Request timeout' });
-  });
-  next();
-});
-
 // Configure JWT secret
 let JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
@@ -57,20 +46,9 @@ console.log(`✅ JWT_SECRET configured: ${JWT_SECRET.length} characters`);
 // Configure port
 const PORT = process.env.PORT || 5000;
 
-// Validate DATABASE_URL
-if (!process.env.DATABASE_URL) {
-  console.error('❌ FATAL: DATABASE_URL environment variable is not set!');
-  console.error('Please configure DATABASE_URL in your environment.');
-  process.exit(1);
-}
-
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-  max: 10,                           // Maximum pool size (reduced for stability)
-  idleTimeoutMillis: 45000,         // Close idle connections after 45 seconds
-  connectionTimeoutMillis: 20000,   // Fail connection attempt after 20 seconds
-  statement_timeout: 20000,         // SQL statement timeout (20 seconds)
 });
 
 // Add pool error handlers
@@ -125,9 +103,6 @@ cron.schedule('0 0 * * *', async () => {
 
 // ======================== MIDDLEWARE DEFINITIONS ========================
 
-// Timeouts are managed at the pool level via connection configuration
-// No per-query timeout wrapper needed
-
 // Verify JWT token and extract user info
 const authenticateToken = (req, res, next) => {
   const authHeader = req.headers['authorization'];
@@ -179,49 +154,26 @@ const requireActiveShift = async (req, res, next) => {
     }
 
     // Check if user has an active shift (shift_end_time is NULL)
-    // Retry up to 3 times with small delay to handle transaction delays
-    let shiftCheck = null;
-    for (let attempt = 0; attempt < 3; attempt++) {
-      try {
-        shiftCheck = await pool.query(
-          'SELECT id, shift_start_time, shift_end_time FROM shift_management WHERE user_id = $1 AND shift_end_time IS NULL ORDER BY id DESC LIMIT 1',
-          [userId]
-        );
-        
-        if (shiftCheck.rows.length > 0) {
-          console.log(`✅ Active shift verified for user ${userId} - Shift ID: ${shiftCheck.rows[0].id}, Started: ${shiftCheck.rows[0].shift_start_time}`);
-          return next();
-        }
-        
-        // If no shift found and this isn't the last attempt, wait a bit and retry
-        if (attempt < 2) {
-          await new Promise(resolve => setTimeout(resolve, 100)); // 100ms delay
-        }
-      } catch (queryErr) {
-        console.error(`Query attempt ${attempt + 1} failed:`, queryErr.message);
-        if (attempt === 2) throw queryErr; // Throw on final attempt
-      }
-    }
+    const shiftCheck = await pool.query(
+      'SELECT id, shift_start_time, shift_end_time FROM shift_management WHERE user_id = $1 AND shift_end_time IS NULL ORDER BY id DESC LIMIT 1',
+      [userId]
+    );
 
-    // After all retries, still no shift found
     if (shiftCheck.rows.length === 0) {
       // Debug: Log recent shifts to understand why none are active
-      try {
-        const recentShifts = await pool.query(
-          'SELECT id, shift_start_time, shift_end_time FROM shift_management WHERE user_id = $1 ORDER BY id DESC LIMIT 3',
-          [userId]
-        );
-        console.warn(`⚠️  No active shift for user ${userId} (after 3 retries). Recent shifts:`, recentShifts.rows);
-      } catch (err) {
-        console.warn(`⚠️  No active shift for user ${userId} (after 3 retries). Could not fetch recent shifts:`, err.message);
-      }
+      const recentShifts = await pool.query(
+        'SELECT id, shift_start_time, shift_end_time FROM shift_management WHERE user_id = $1 ORDER BY id DESC LIMIT 3',
+        [userId]
+      );
+      console.warn(`⚠️  No active shift for user ${userId}. Recent shifts:`, recentShifts.rows);
       
       return res.status(403).json({ 
         message: 'No active shift. Please start a shift before performing any activities.',
         code: 'NO_ACTIVE_SHIFT'
       });
     }
-    
+
+    console.log(`✅ Active shift verified for user ${userId} - Shift ID: ${shiftCheck.rows[0].id}, Started: ${shiftCheck.rows[0].shift_start_time}`);
     next();
   } catch (err) {
     console.error('Error checking active shift:', err);
@@ -286,25 +238,6 @@ app.post('/register', async (req, res) => {
     console.error('❌ Registration error:', err.message);
     console.error('Error details:', err);
     res.status(500).json({ message: `Error creating user: ${err.message}` });
-  }
-});
-
-// Health check endpoint
-app.get('/health', async (req, res) => {
-  try {
-    const result = await pool.query('SELECT 1');
-    res.status(200).json({ 
-      status: 'healthy', 
-      timestamp: new Date().toISOString(),
-      port: PORT,
-      environment: process.env.NODE_ENV || 'development'
-    });
-  } catch (err) {
-    res.status(503).json({ 
-      status: 'unhealthy',
-      error: err.message,
-      timestamp: new Date().toISOString()
-    });
   }
 });
 
@@ -2840,49 +2773,27 @@ app.post('/start-shift', async (req, res) => {
   const { userId, openingBalance } = req.body;
 
   try {
-    console.log(`📍 Start shift request: userId=${userId}, openingBalance=${openingBalance}`);
-    
     if (!openingBalance || openingBalance < 0) {
       return res.status(400).json({ message: 'Invalid opening balance' });
     }
 
     // Check if there's an active shift for this user
-    let activeShiftCheck;
-    try {
-      activeShiftCheck = await pool.query(
-        'SELECT * FROM shift_management WHERE user_id = $1 AND shift_end_time IS NULL',
-        [userId]
-      );
-    } catch (err) {
-      console.error('Error checking active shift:', err.message);
-      return res.status(503).json({ message: 'Database error: ' + err.message });
-    }
+    const activeShiftCheck = await pool.query(
+      'SELECT * FROM shift_management WHERE user_id = $1 AND shift_end_time IS NULL',
+      [userId]
+    );
 
     if (activeShiftCheck.rows.length > 0) {
-      console.warn(`⚠️  User ${userId} already has active shift:`, activeShiftCheck.rows[0]);
       return res.status(400).json({ message: 'User already has an active shift. Please close the previous shift first.' });
     }
 
     // Insert new shift record
-    let result;
-    try {
-      result = await pool.query(
-        `INSERT INTO shift_management (user_id, shift_start_time, opening_balance)
-         VALUES ($1, CURRENT_TIMESTAMP, $2)
-         RETURNING *`,
-        [userId, parseFloat(openingBalance)]
-      );
-    } catch (err) {
-      console.error('Error creating shift:', err.message);
-      return res.status(503).json({ message: 'Database error: ' + err.message });
-    }
-
-    console.log(`✅ Shift ${result.rows[0].id} created for user ${userId}:`, {
-      id: result.rows[0].id,
-      shift_start_time: result.rows[0].shift_start_time,
-      shift_end_time: result.rows[0].shift_end_time,
-      opening_balance: result.rows[0].opening_balance
-    });
+    const result = await pool.query(
+      `INSERT INTO shift_management (user_id, shift_start_time, opening_balance)
+       VALUES ($1, CURRENT_TIMESTAMP, $2)
+       RETURNING *`,
+      [userId, parseFloat(openingBalance)]
+    );
 
     res.status(201).json({
       message: 'Shift started successfully',
@@ -2910,16 +2821,10 @@ app.get('/current-shift', async (req, res) => {
       return res.status(400).json({ message: 'Invalid User ID format' });
     }
 
-    let result;
-    try {
-      result = await pool.query(
-        'SELECT * FROM shift_management WHERE user_id = $1 AND shift_end_time IS NULL ORDER BY id DESC LIMIT 1',
-        [userIdNum]
-      );
-    } catch (err) {
-      console.error('Error fetching current shift:', err.message);
-      return res.status(503).json({ message: 'Database error: ' + err.message });
-    }
+    const result = await pool.query(
+      'SELECT * FROM shift_management WHERE user_id = $1 AND shift_end_time IS NULL ORDER BY id DESC LIMIT 1',
+      [userIdNum]
+    );
 
     if (result.rows.length === 0) {
       return res.status(404).json({ message: 'No active shift found' });
@@ -2947,16 +2852,10 @@ app.get('/current-shift/:userId', async (req, res) => {
       return res.status(400).json({ message: 'Invalid User ID format' });
     }
 
-    let result;
-    try {
-      result = await pool.query(
-        'SELECT * FROM shift_management WHERE user_id = $1 AND shift_end_time IS NULL ORDER BY id DESC LIMIT 1',
-        [userIdNum]
-      );
-    } catch (err) {
-      console.error('Error fetching current shift:', err.message);
-      return res.status(503).json({ message: 'Database error: ' + err.message });
-    }
+    const result = await pool.query(
+      'SELECT * FROM shift_management WHERE user_id = $1 AND shift_end_time IS NULL ORDER BY id DESC LIMIT 1',
+      [userIdNum]
+    );
 
     if (result.rows.length === 0) {
       return res.status(404).json({ message: 'No active shift found' });
@@ -2980,16 +2879,10 @@ app.post('/end-shift', async (req, res) => {
     }
 
     // Get active shift
-    let shiftResult;
-    try {
-      shiftResult = await pool.query(
-        'SELECT * FROM shift_management WHERE user_id = $1 AND shift_end_time IS NULL ORDER BY id DESC LIMIT 1',
-        [userId]
-      );
-    } catch (err) {
-      console.error('Error fetching shift:', err.message);
-      return res.status(503).json({ message: 'Database error: ' + err.message });
-    }
+    const shiftResult = await pool.query(
+      'SELECT * FROM shift_management WHERE user_id = $1 AND shift_end_time IS NULL ORDER BY id DESC LIMIT 1',
+      [userId]
+    );
 
     if (shiftResult.rows.length === 0) {
       return res.status(404).json({ message: 'No active shift found' });
@@ -2998,32 +2891,20 @@ app.post('/end-shift', async (req, res) => {
     const shift = shiftResult.rows[0];
 
     // Get CASH payments received only (not card, check, etc)
-    let paymentsResult;
-    try {
-      paymentsResult = await pool.query(
-        `SELECT COALESCE(SUM(payment_amount), 0) AS total_payments 
-         FROM payment_history 
-         WHERE created_by = $1 AND payment_date >= $2 AND LOWER(payment_method) = 'cash'`,
-        [userId, shift.shift_start_time]
-      );
-    } catch (err) {
-      console.error('Error fetching payments:', err.message);
-      return res.status(503).json({ message: 'Database error: ' + err.message });
-    }
+    const paymentsResult = await pool.query(
+      `SELECT COALESCE(SUM(payment_amount), 0) AS total_payments 
+       FROM payment_history 
+       WHERE created_by = $1 AND payment_date >= $2 AND LOWER(payment_method) = 'cash'`,
+      [userId, shift.shift_start_time]
+    );
 
     // Get all loans given during this shift
-    let loansGivenResult;
-    try {
-      loansGivenResult = await pool.query(
-        `SELECT COALESCE(SUM(loan_amount), 0) AS total_loans_given 
-         FROM loans 
-         WHERE created_by = $1 AND loan_issued_date >= DATE($2)`,
-        [userId, shift.shift_start_time]
-      );
-    } catch (err) {
-      console.error('Error fetching loans:', err.message);
-      return res.status(503).json({ message: 'Database error: ' + err.message });
-    }
+    const loansGivenResult = await pool.query(
+      `SELECT COALESCE(SUM(loan_amount), 0) AS total_loans_given 
+       FROM loans 
+       WHERE created_by = $1 AND loan_issued_date >= DATE($2)`,
+      [userId, shift.shift_start_time]
+    );
 
     const totalCashPayments = parseFloat(paymentsResult.rows[0].total_payments || 0);
     const totalLoansGiven = parseFloat(loansGivenResult.rows[0].total_loans_given || 0);
@@ -4846,25 +4727,19 @@ async function initializeDatabase() {
   }
 }
 
-// Initialize database in background (don't block server startup)
+// Initialize database before starting server
 initializeDatabase().then(() => {
-  console.log('✅ Database initialization complete');
-}).catch((err) => {
-  console.warn('⚠️  Database initialization failed:', err.message);
+  console.log('✅ Database initialized');
 });
 
 // Start HTTP server
 console.log('⚙️  Starting PawnFlow Server...');
 console.log('🔌 Listening on port', PORT);
 
-const server = app.listen(PORT, '0.0.0.0', () => {
+const server = app.listen(PORT, () => {
   console.log(`🚀 Server is running on port ${PORT}`);
   console.log('✅ Server started successfully');
 });
-
-// Enable keepalive to prevent connection timeouts
-server.keepAliveTimeout = 65000;
-server.headersTimeout = 66000;
 
 // Handle server errors
 server.on('error', (err) => {
