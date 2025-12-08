@@ -4415,7 +4415,9 @@ app.get('/api/loans/:loanId/receipt', authenticateToken, async (req, res) => {
     console.log('📄 Generating receipt PDF for loan:', {
       id: loan.id,
       transaction_number: loan.transaction_number,
-      customer_name: `${loan.first_name || ''} ${loan.last_name || ''}`,
+      customer_name_field: loan.customer_name,
+      first_name: loan.first_name,
+      last_name: loan.last_name,
       loan_amount: loan.loan_amount
     });
 
