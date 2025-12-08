@@ -3756,15 +3756,11 @@ app.get('/loan-pdf/:loanId', async (req, res) => {
       transaction_number: loan.transaction_number,
       first_name: loan.first_name,
       last_name: loan.last_name,
+      customer_name: loan.customer_name,
       loan_amount: loan.loan_amount,
       interest_rate: loan.interest_rate,
       total_payable_amount: loan.total_payable_amount
     });
-
-    // Ensure all required fields exist for PDF generation
-    if (!loan.transaction_number || !loan.first_name || !loan.last_name) {
-      console.warn(`⚠️ Incomplete loan data for ID ${loanId}:`, loan);
-    }
 
     // Generate PDF
     const pdfBuffer = await generateLoanPDF(loan);
