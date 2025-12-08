@@ -29,8 +29,13 @@ app.use(cors({
   origin: corsOrigins,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: '*'
+  allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
+  exposedHeaders: ['Content-Type', 'Authorization'],
+  maxAge: 86400
 }));
+
+// Handle preflight requests
+app.options('*', cors());
 
 // Configure JWT secret
 let JWT_SECRET = process.env.JWT_SECRET;
