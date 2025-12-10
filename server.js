@@ -2906,20 +2906,23 @@ app.post('/end-shift', async (req, res) => {
 
     // Get CASH payments received ONLY during this shift period
     // Only count payments AFTER the lower boundary (previous shift end or shift start)
+    // AND BEFORE NOW (shift close time)
+    const now = new Date();
     const paymentsResult = await pool.query(
       `SELECT COALESCE(SUM(payment_amount), 0) AS total_payments 
        FROM payment_history 
-       WHERE created_by = $1 AND payment_date >= $2 AND LOWER(payment_method) = 'cash'`,
-      [userId, lowerBoundary]
+       WHERE created_by = $1 AND payment_date >= $2 AND payment_date <= $3 AND LOWER(payment_method) = 'cash'`,
+      [userId, lowerBoundary, now]
     );
 
     // Get all loans given ONLY during this shift period
     // Only count loans AFTER the lower boundary (previous shift end or shift start)
+    // AND BEFORE NOW (shift close time)
     const loansGivenResult = await pool.query(
       `SELECT COALESCE(SUM(loan_amount), 0) AS total_loans_given 
        FROM loans 
-       WHERE created_by = $1 AND loan_issued_date >= $2`,
-      [userId, lowerBoundary]
+       WHERE created_by = $1 AND loan_issued_date >= $2 AND loan_issued_date <= $3`,
+      [userId, lowerBoundary, now]
     );
 
     const totalCashPayments = parseFloat(paymentsResult.rows[0].total_payments || 0);
