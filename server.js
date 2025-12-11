@@ -3303,14 +3303,10 @@ app.get('/detailed-loans-breakdown', async (req, res) => {
 
     // Build status filter
     let statusFilter = '';
-    let paramIndex = params.length + 1;
     
     if (status === 'active') {
-      statusFilter = `AND l.status = $${paramIndex}`;
-      params.push('active');
+      statusFilter = `AND l.status = 'active'`;
     } else if (status === 'overdue') {
-      statusFilter = `AND l.status IN ($${paramIndex}, $${paramIndex + 1})`;
-      params.push('overdue', 'active');
       // For overdue: include 'overdue' status OR 'active' loans past due date
       statusFilter = `AND (l.status = 'overdue' OR (l.status = 'active' AND l.due_date < CURRENT_DATE))`;
     }
