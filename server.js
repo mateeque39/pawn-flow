@@ -204,6 +204,19 @@ app.post('/register', async (req, res) => {
       return res.status(400).json({ message: 'Password must be at least 6 characters long' });
     }
 
+    // Add stronger password validation to prevent weak passwords
+    if (!/[A-Z]/.test(password)) {
+      return res.status(400).json({ message: 'Password must contain at least one uppercase letter' });
+    }
+    if (!/[0-9]/.test(password)) {
+      return res.status(400).json({ message: 'Password must contain at least one number' });
+    }
+
+    // Prevent empty or whitespace-only usernames
+    if (!username || username.trim().length === 0) {
+      return res.status(400).json({ message: 'Username cannot be empty or whitespace' });
+    }
+
     // Check if user already exists
     const existingUser = await pool.query('SELECT * FROM users WHERE username = $1', [username]);
     if (existingUser.rows.length > 0) {
@@ -884,7 +897,7 @@ app.post('/make-payment', authenticateToken, requireActiveShift, async (req, res
 // ---------------------------- REDEEM LOAN ----------------------------
 
 
-app.post('/redeem-loan', requireActiveShift, async (req, res) => {
+app.post('/redeem-loan', authenticateToken, requireActiveShift, async (req, res) => {
   const { loanId, userId } = req.body;
 
   try {
@@ -2898,7 +2911,7 @@ app.post('/end-shift', async (req, res) => {
     const paymentsResult = await pool.query(
       `SELECT COALESCE(SUM(payment_amount), 0) AS total_payments 
        FROM payment_history 
-       WHERE created_by = $1 AND payment_date > $2 AND payment_date <= $3 AND LOWER(payment_method) = 'cash'`,
+       WHERE created_by = $1 AND payment_date >= $2 AND payment_date <= $3 AND LOWER(payment_method) = 'cash'`,
       [userId, shiftStartTime, now]
     );
 
@@ -2907,17 +2920,35 @@ app.post('/end-shift', async (req, res) => {
     const loansGivenResult = await pool.query(
       `SELECT COALESCE(SUM(loan_amount), 0) AS total_loans_given 
        FROM loans 
-       WHERE created_by = $1 AND loan_issued_date > $2 AND loan_issued_date <= $3`,
+       WHERE created_by = $1 AND loan_issued_date >= $2 AND loan_issued_date <= $3`,
+      [userId, shiftStartTime, now]
+    );
+
+    // Get redemptions DURING THIS SHIFT
+    // Redemptions represent cash received when customer redeems the loan
+    const redemptionsResult = await pool.query(
+      `SELECT COALESCE(SUM(l.total_payable_amount), 0) AS total_redemptions
+       FROM loans l
+       WHERE l.created_by = $1 AND l.status = 'redeemed'
+       AND (l.updated_at >= $2 AND l.updated_at <= $3 
+            OR EXISTS (
+              SELECT 1 FROM redeem_history rh 
+              WHERE rh.loan_id = l.id AND rh.created_at >= $2 AND rh.created_at <= $3
+            ))`,
       [userId, shiftStartTime, now]
     );
 
     const totalCashPayments = parseFloat(paymentsResult.rows[0].total_payments || 0);
     const totalLoansGiven = parseFloat(loansGivenResult.rows[0].total_loans_given || 0);
+    const totalRedemptions = parseFloat(redemptionsResult.rows[0].total_redemptions || 0);
     const openingBalance = parseFloat(shift.opening_balance);
 
-    // Calculate expected balance: opening + cash payments - loans given
-    // Non-cash payments (card, check) don't affect cash balance
-    const expectedBalance = openingBalance + totalCashPayments - totalLoansGiven;
+    // Calculate expected balance: opening + cash payments + redemptions - loans given
+    // All three (payments, redemptions, loans) affect the cash balance
+    // Payments: cash received from loan payments
+    // Redemptions: cash received when customers redeem and get collateral back
+    // Loans: cash given out as new loans
+    const expectedBalance = openingBalance + totalCashPayments + totalRedemptions - totalLoansGiven;
     const closingBalanceNum = parseFloat(closingBalance);
     const difference = closingBalanceNum - expectedBalance;
     const isBalanced = Math.abs(difference) < 0.01; // Allow for floating point errors
@@ -3076,35 +3107,60 @@ app.get('/today-shift-summary/:userId', async (req, res) => {
 
     // Calculate current stats if shift is active
     if (!shift.shift_end_time) {
+      // Get CASH payments received (exclude card, check, and other non-cash methods)
       const paymentsResult = await pool.query(
         `SELECT COALESCE(SUM(payment_amount), 0) AS total_payments,
                 COUNT(*) AS payment_count
          FROM payment_history 
-         WHERE created_by = $1 AND payment_date >= $2`,
+         WHERE created_by = $1 AND payment_date >= $2 AND LOWER(payment_method) = 'cash'`,
         [userId, shift.shift_start_time]
       );
 
+      // Get all loans given during shift
       const loansGivenResult = await pool.query(
         `SELECT COALESCE(SUM(loan_amount), 0) AS total_loans_given,
                 COUNT(*) AS loan_count
          FROM loans 
-         WHERE created_by = $1 AND loan_issued_date >= DATE($2)`,
+         WHERE created_by = $1 AND loan_issued_date >= $2`,
+        [userId, shift.shift_start_time]
+      );
+
+      // Get redemptions - total amount received when customers redeem loans
+      // A redemption means the customer paid the full amount and retrieved collateral
+      // This is cash received and should be counted in the balance
+      const redemptionsResult = await pool.query(
+        `SELECT COALESCE(SUM(l.total_payable_amount), 0) AS total_redemptions,
+                COUNT(DISTINCT l.id) AS redemption_count
+         FROM loans l
+         WHERE l.created_by = $1 AND l.status = 'redeemed' 
+         AND (l.updated_at >= $2 OR EXISTS (
+           SELECT 1 FROM redeem_history rh WHERE rh.loan_id = l.id AND rh.created_at >= $2
+         ))`,
         [userId, shift.shift_start_time]
       );
 
       const totalPayments = parseFloat(paymentsResult.rows[0].total_payments || 0);
       const totalLoansGiven = parseFloat(loansGivenResult.rows[0].total_loans_given || 0);
-      const expectedBalance = parseFloat(shift.opening_balance) + totalPayments - totalLoansGiven;
+      const totalRedemptions = parseFloat(redemptionsResult.rows[0].total_redemptions || 0);
+      const openingBalance = parseFloat(shift.opening_balance);
+      
+      // Expected balance:
+      // = Opening Balance + Cash Payments + Redemptions - Loans Given
+      // Payments and redemptions both represent cash received from customers
+      // Loans represent cash given out as loans
+      const expectedBalance = openingBalance + totalPayments + totalRedemptions - totalLoansGiven;
 
       return res.json({
         shift: shift,
         currentStats: {
-          openingBalance: shift.opening_balance,
+          openingBalance: openingBalance,
           expectedBalance: expectedBalance,
           totalPaymentsReceived: totalPayments,
+          totalRedemptionsReceived: totalRedemptions,
           totalLoansGiven: totalLoansGiven,
           paymentCount: paymentsResult.rows[0].payment_count,
           loanCount: loansGivenResult.rows[0].loan_count,
+          redemptionCount: redemptionsResult.rows[0].redemption_count || 0,
           shiftActive: true
         }
       });
