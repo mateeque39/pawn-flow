@@ -283,7 +283,72 @@ app.post('/login', async (req, res) => {
   }
 });
 
-// ---------------------------- EXTEND LOAN DUE DATE ----------------------------
+// ======================== ADMIN PANEL ENDPOINTS ========================
+
+// GET ALL ACCOUNTS - Get list of all registered users
+app.get('/all-accounts', async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT id, username, role_id as role, created_at 
+       FROM users 
+       ORDER BY created_at DESC`
+    );
+
+    // Map role_id to role names
+    const accounts = result.rows.map(user => ({
+      ...user,
+      role: user.role === 1 ? 'admin' : 'employee'
+    }));
+
+    res.json(accounts);
+  } catch (err) {
+    console.error('❌ Error fetching accounts:', err);
+    res.status(500).json({ message: 'Error fetching accounts' });
+  }
+});
+
+// DELETE ACCOUNT - Delete a user account
+app.delete('/delete-account/:userId', async (req, res) => {
+  const { userId } = req.params;
+
+  try {
+    const userIdNum = parseInt(userId, 10);
+
+    if (isNaN(userIdNum)) {
+      return res.status(400).json({ message: 'Invalid user ID' });
+    }
+
+    // Prevent deleting if user has active shifts
+    const shiftCheck = await pool.query(
+      'SELECT * FROM shift_management WHERE user_id = $1 AND shift_end_time IS NULL',
+      [userIdNum]
+    );
+
+    if (shiftCheck.rows.length > 0) {
+      return res.status(400).json({ message: 'Cannot delete user with active shift' });
+    }
+
+    // Delete the user
+    const result = await pool.query(
+      'DELETE FROM users WHERE id = $1 RETURNING username',
+      [userIdNum]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    console.log(`✅ User deleted: ${result.rows[0].username}`);
+    res.json({ message: 'Account deleted successfully', username: result.rows[0].username });
+  } catch (err) {
+    console.error('❌ Error deleting account:', err);
+    res.status(500).json({ message: 'Error deleting account' });
+  }
+});
+
+// ======================== END ADMIN PANEL ENDPOINTS ========================
+
+// EXTEND LOAN DUE DATE ----------------------------
 app.post('/extend-loan', async (req, res) => {
   const { loanId } = req.body;
 
