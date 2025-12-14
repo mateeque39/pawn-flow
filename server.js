@@ -101,6 +101,51 @@ cron.schedule('0 0 * * *', async () => {
   }
 });
 
+// ======================== ADMIN SETTINGS INITIALIZATION ========================
+
+// Initialize admin settings table on startup
+const initializeAdminSettings = async () => {
+  try {
+    // Create admin_settings table if it doesn't exist
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS admin_settings (
+        id SERIAL PRIMARY KEY,
+        admin_password VARCHAR(255) NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        changed_by VARCHAR(255),
+        change_reason VARCHAR(500)
+      )
+    `);
+
+    // Check if admin password exists
+    const result = await pool.query('SELECT COUNT(*) as count FROM admin_settings');
+    const count = parseInt(result.rows[0].count, 10);
+
+    if (count === 0) {
+      // Hash the default password using bcrypt
+      const defaultPassword = 'pawnflowniran!@#12';
+      const hashedPassword = await bcrypt.hash(defaultPassword, 10);
+      
+      // Insert default admin password
+      await pool.query(
+        `INSERT INTO admin_settings (admin_password, changed_by, change_reason)
+         VALUES ($1, $2, $3)`,
+        [hashedPassword, 'system', 'Initial setup - default password']
+      );
+      
+      console.log('✅ Admin settings initialized with default password');
+    } else {
+      console.log('✅ Admin settings already initialized');
+    }
+  } catch (err) {
+    console.error('❌ Error initializing admin settings:', err.message);
+  }
+};
+
+// Call initialization on server startup
+initializeAdminSettings();
+
 // ======================== MIDDLEWARE DEFINITIONS ========================
 
 // Verify JWT token and extract user info
@@ -343,6 +388,98 @@ app.delete('/delete-account/:userId', async (req, res) => {
   } catch (err) {
     console.error('❌ Error deleting account:', err);
     res.status(500).json({ message: 'Error deleting account' });
+  }
+});
+
+// VERIFY ADMIN PASSWORD - Check if provided password is correct
+app.post('/verify-admin-password', async (req, res) => {
+  const { password } = req.body;
+
+  try {
+    if (!password) {
+      return res.status(400).json({ message: 'Password is required' });
+    }
+
+    // Get the stored admin password
+    const result = await pool.query(
+      'SELECT admin_password FROM admin_settings LIMIT 1'
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(500).json({ message: 'Admin settings not configured' });
+    }
+
+    const storedHash = result.rows[0].admin_password;
+
+    // Compare provided password with stored hash
+    const isMatch = await bcrypt.compare(password, storedHash);
+
+    if (isMatch) {
+      res.json({ message: 'Password verified', verified: true });
+    } else {
+      res.status(401).json({ message: 'Incorrect password', verified: false });
+    }
+  } catch (err) {
+    console.error('❌ Error verifying admin password:', err);
+    res.status(500).json({ message: 'Error verifying password' });
+  }
+});
+
+// UPDATE ADMIN PASSWORD - Change the admin panel password
+app.post('/update-admin-password', async (req, res) => {
+  const { currentPassword, newPassword } = req.body;
+
+  try {
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ message: 'Current and new passwords are required' });
+    }
+
+    // Validate new password
+    if (newPassword.length < 8) {
+      return res.status(400).json({ message: 'New password must be at least 8 characters' });
+    }
+
+    if (!/[A-Z]/.test(newPassword)) {
+      return res.status(400).json({ message: 'Password must contain at least one uppercase letter' });
+    }
+
+    if (!/[0-9]/.test(newPassword)) {
+      return res.status(400).json({ message: 'Password must contain at least one number' });
+    }
+
+    // Get the stored admin password
+    const result = await pool.query(
+      'SELECT admin_password FROM admin_settings LIMIT 1'
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(500).json({ message: 'Admin settings not configured' });
+    }
+
+    const storedHash = result.rows[0].admin_password;
+
+    // Verify current password
+    const isMatch = await bcrypt.compare(currentPassword, storedHash);
+    if (!isMatch) {
+      return res.status(401).json({ message: 'Current password is incorrect' });
+    }
+
+    // Hash the new password
+    const newHash = await bcrypt.hash(newPassword, 10);
+
+    // Update the password
+    await pool.query(
+      `UPDATE admin_settings 
+       SET admin_password = $1, updated_at = CURRENT_TIMESTAMP, changed_by = $2, change_reason = $3
+       WHERE id = (SELECT id FROM admin_settings LIMIT 1)`,
+      [newHash, 'admin', 'Manual change via admin panel']
+    );
+
+    console.log('✅ Admin password updated successfully');
+    res.json({ message: 'Password updated successfully' });
+  } catch (err) {
+    console.error('❌ Error updating admin password:', err);
+    res.status(500).json({ message: 'Error updating password' });
   }
 });
 
