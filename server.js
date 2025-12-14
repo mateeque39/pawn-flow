@@ -483,6 +483,43 @@ app.post('/update-admin-password', async (req, res) => {
   }
 });
 
+// UPDATE USER ROLE - Change a user's role (admin or employee)
+app.put('/change-user-role/:userId', async (req, res) => {
+  const { userId } = req.params;
+  const { role } = req.body;
+
+  try {
+    const userIdNum = parseInt(userId, 10);
+
+    if (isNaN(userIdNum)) {
+      return res.status(400).json({ message: 'Invalid user ID' });
+    }
+
+    if (!role || (role !== 'admin' && role !== 'employee')) {
+      return res.status(400).json({ message: 'Invalid role. Must be "admin" or "employee"' });
+    }
+
+    // Convert role to role_id
+    const roleId = role === 'admin' ? 1 : 2;
+
+    // Update the user's role
+    const result = await pool.query(
+      'UPDATE users SET role_id = $1 WHERE id = $2 RETURNING id, username, role_id',
+      [roleId, userIdNum]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    console.log(`✅ User role updated: ${result.rows[0].username} -> ${role}`);
+    res.json({ message: 'User role updated successfully', user: result.rows[0] });
+  } catch (err) {
+    console.error('❌ Error updating user role:', err);
+    res.status(500).json({ message: 'Error updating user role' });
+  }
+});
+
 // ======================== END ADMIN PANEL ENDPOINTS ========================
 
 // EXTEND LOAN DUE DATE ----------------------------
