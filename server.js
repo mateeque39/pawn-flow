@@ -275,10 +275,10 @@ cron.schedule('0 8 * * *', async () => {
         };
 
         await emailTransporter.sendMail(mailOptions);
-        console.log(\`✅ Email sent to \${loan.email} for loan ID \${loan.id}\`);
+        console.log(`✅ Email sent to ${loan.email} for loan ID ${loan.id}`);
 
       } catch (emailError) {
-        console.error(\`❌ Failed to send email for loan \${loan.id}:\`, emailError.message);
+        console.error(`❌ Failed to send email for loan ${loan.id}:`, emailError.message);
       }
     }
 
@@ -5207,7 +5207,7 @@ async function sendDueDateReminderEmail(loanId, pool, emailTransporter) {
     };
 
     await emailTransporter.sendMail(mailOptions);
-    return { success: true, message: \`Email sent successfully to \${loan.email}\` };
+    return { success: true, message: `Email sent successfully to ${loan.email}` };
   } catch (err) {
     console.error('Error sending email:', err);
     return { success: false, message: err.message };
@@ -5256,14 +5256,14 @@ app.post('/send-all-due-date-reminders', authenticateToken, async (req, res) => 
 
     // Query for active loans with due dates within next 7 days
     const result = await pool.query(
-      \`SELECT l.*, c.first_name, c.last_name, c.email
+      `SELECT l.*, c.first_name, c.last_name, c.email
        FROM loans l
        JOIN customers c ON l.customer_id = c.id
-       WHERE l.status = \$1 
-       AND l.due_date >= \$2 
-       AND l.due_date <= \$3
+       WHERE l.status = $1 
+       AND l.due_date >= $2 
+       AND l.due_date <= $3
        AND c.email IS NOT NULL
-       AND c.email != ''\`,
+       AND c.email != ''`,
       ['active', today.toISOString().split('T')[0], sevenDaysLater.toISOString().split('T')[0]]
     );
 
@@ -5286,7 +5286,7 @@ app.post('/send-all-due-date-reminders', authenticateToken, async (req, res) => 
       totalLoans: loansUpcoming.length,
       successCount,
       failureCount,
-      details: \`Successfully sent \${successCount} emails. Failed to send \${failureCount} emails.\`
+      details: `Successfully sent ${successCount} emails. Failed to send ${failureCount} emails.`
     });
   } catch (err) {
     console.error('Error in send-all-due-date-reminders endpoint:', err);
