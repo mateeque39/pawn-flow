@@ -2098,10 +2098,44 @@ app.get('/customers/:customerId/loans', async (req, res) => {
       [customerIdNum]
     );
 
+    // Helper function to ensure dates are in YYYY-MM-DD format (string, not ISO datetime)
+    const formatDateOnly = (dateValue) => {
+      if (!dateValue) return null;
+      // If it's already a string in YYYY-MM-DD format, return as-is
+      if (typeof dateValue === 'string' && /^\d{4}-\d{2}-\d{2}/.test(dateValue)) {
+        return dateValue.slice(0, 10);
+      }
+      // If it's a Date object, format it
+      if (dateValue instanceof Date) {
+        const year = dateValue.getFullYear();
+        const month = String(dateValue.getMonth() + 1).padStart(2, '0');
+        const day = String(dateValue.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+      }
+      // Try to parse as date
+      const parsed = new Date(dateValue);
+      if (!isNaN(parsed.getTime())) {
+        const year = parsed.getUTCFullYear();
+        const month = String(parsed.getUTCMonth() + 1).padStart(2, '0');
+        const day = String(parsed.getUTCDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+      }
+      return null;
+    };
+
+    // Format all loan dates to ensure consistency
+    const formatLoans = (loans) => {
+      return loans.map(loan => ({
+        ...loan,
+        loan_issued_date: formatDateOnly(loan.loan_issued_date),
+        due_date: formatDateOnly(loan.due_date)
+      }));
+    };
+
     res.json({
-      activeLoans: activeLoansResult.rows,
-      redeemedLoans: redeemedLoansResult.rows,
-      forfeitedLoans: forfeitedLoansResult.rows,
+      activeLoans: formatLoans(activeLoansResult.rows),
+      redeemedLoans: formatLoans(redeemedLoansResult.rows),
+      forfeitedLoans: formatLoans(forfeitedLoansResult.rows),
       paymentHistory: paymentHistoryResult.rows,
       summary: {
         totalActiveLoans: activeLoansResult.rows.length,
