@@ -86,13 +86,15 @@ emailTransporter.verify((error, success) => {
 
 // ======================== UTILITY FUNCTIONS ========================
 
-// Get current date in local timezone (YYYY-MM-DD format)
-// This prevents UTC/timezone offset issues where today's date shows as yesterday
+// Get current date in EST timezone (YYYY-MM-DD format)
+// This ensures dates are created in Eastern Standard Time
 function getLocalDateString() {
   const date = new Date();
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
+  // Convert to EST (UTC-5) / EDT (UTC-4)
+  const estDate = new Date(date.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+  const year = estDate.getFullYear();
+  const month = String(estDate.getMonth() + 1).padStart(2, '0');
+  const day = String(estDate.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
 }
 
@@ -3733,7 +3735,7 @@ app.get('/detailed-loans-breakdown', async (req, res) => {
     // If status === 'all', no filter applied
 
     // Get all loans with customer info and payment status
-    const query = `
+    let query = `
       SELECT 
         l.id,
         l.transaction_number,
@@ -3863,10 +3865,16 @@ app.get('/detailed-loans-breakdown', async (req, res) => {
     });
 
   } catch (err) {
-    console.error('Error generating detailed loans breakdown:', err);
+    console.error('Error generating detailed loans breakdown:', {
+      message: err.message,
+      code: err.code,
+      query: err.query,
+      detail: err.detail
+    });
     res.status(500).json({ 
       message: 'Error generating detailed loans breakdown', 
-      error: err.message 
+      error: err.message,
+      detail: err.detail
     });
   }
 });
