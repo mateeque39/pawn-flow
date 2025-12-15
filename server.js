@@ -5,6 +5,7 @@ const cors = require('cors');
 const { Pool } = require('pg');
 const validators = require('./validators');
 const { generateLoanPDF } = require('./pdf-invoice-generator');
+const nodemailer = require('nodemailer');
 require('dotenv').config();
 
 const app = express();
@@ -60,6 +61,41 @@ pool.on('connect', () => {
   console.log('✅ Database pool connected');
 });
 
+// ======================== EMAIL TRANSPORTER CONFIGURATION ========================
+
+// Configure email transporter using environment variables
+const emailTransporter = nodemailer.createTransport({
+  host: process.env.EMAIL_HOST || 'smtp.gmail.com',
+  port: process.env.EMAIL_PORT || 587,
+  secure: process.env.EMAIL_SECURE === 'true' || false,
+  auth: {
+    user: process.env.EMAIL_USER || '',
+    pass: process.env.EMAIL_PASSWORD || '',
+  },
+});
+
+// Verify email configuration
+emailTransporter.verify((error, success) => {
+  if (error) {
+    console.warn('⚠️  Email transporter not configured or failed:', error.message);
+    console.warn('Email notifications will not be sent.');
+  } else {
+    console.log('✅ Email transporter configured successfully');
+  }
+});
+
+// ======================== UTILITY FUNCTIONS ========================
+
+// Get current date in local timezone (YYYY-MM-DD format)
+// This prevents UTC/timezone offset issues where today's date shows as yesterday
+function getLocalDateString() {
+  const date = new Date();
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 const cron = require('node-cron');
 
 // This cron job will run every day at midnight (00:00)
@@ -98,6 +134,157 @@ cron.schedule('0 0 * * *', async () => {
     }
   } catch (err) {
     console.error('Error checking due date:', err);
+  }
+});
+
+// ======================== CRON JOB: SEND EMAIL REMINDERS FOR UPCOMING DUE DATES ========================
+// This cron job runs daily at 8:00 AM to send email reminders for customers with due dates within 7 days
+
+cron.schedule('0 8 * * *', async () => {
+  try {
+    console.log('🔔 Starting due date reminder email job...');
+    
+    // Calculate date range: today to 7 days from now
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const sevenDaysLater = new Date(today);
+    sevenDaysLater.setDate(sevenDaysLater.getDate() + 7);
+    sevenDaysLater.setHours(23, 59, 59, 999);
+
+    // Query for active loans with due dates within next 7 days
+    const result = await pool.query(
+      `SELECT l.*, c.first_name, c.last_name, c.email, c.mobile_phone
+       FROM loans l
+       JOIN customers c ON l.customer_id = c.id
+       WHERE l.status = $1 
+       AND l.due_date >= $2 
+       AND l.due_date <= $3
+       AND c.email IS NOT NULL
+       AND c.email != ''`,
+      ['active', today.toISOString().split('T')[0], sevenDaysLater.toISOString().split('T')[0]]
+    );
+
+    const loansUpcoming = result.rows;
+    console.log(`Found ${loansUpcoming.length} loans with due dates in next 7 days`);
+
+    // Send email for each loan
+    for (let loan of loansUpcoming) {
+      try {
+        // Calculate days until due date
+        const dueDate = new Date(loan.due_date);
+        const daysUntilDue = Math.ceil((dueDate - today) / (1000 * 60 * 60 * 24));
+
+        // Get payment history to calculate amount paid
+        const paymentResult = await pool.query(
+          'SELECT SUM(payment_amount) AS total_paid FROM payment_history WHERE loan_id = $1',
+          [loan.id]
+        );
+        const totalPaid = paymentResult.rows[0].total_paid || 0;
+        
+        // Calculate remaining balance
+        const remainingBalance = loan.interest_amount - totalPaid;
+
+        // Prepare email content
+        const customerName = \`\${loan.first_name} \${loan.last_name}\`;
+        const emailSubject = \`⏰ Loan Due Date Reminder - Your Loan is Due in \${daysUntilDue} Day\${daysUntilDue !== 1 ? 's' : ''}\`;
+        
+        const emailHTML = \`
+          <!DOCTYPE html>
+          <html>
+            <head>
+              <style>
+                body { font-family: Arial, sans-serif; color: #333; line-height: 1.6; }
+                .container { max-width: 600px; margin: 0 auto; background-color: #f9f9f9; padding: 20px; border-radius: 8px; }
+                .header { background-color: #1a1a1a; color: #fff; padding: 20px; border-radius: 8px 8px 0 0; text-align: center; }
+                .content { background-color: #fff; padding: 20px; }
+                .loan-details { background-color: #f0f0f0; padding: 15px; border-radius: 5px; margin: 15px 0; }
+                .detail-row { display: flex; justify-content: space-between; margin: 8px 0; }
+                .detail-label { font-weight: bold; }
+                .footer { text-align: center; color: #666; font-size: 12px; margin-top: 20px; padding-top: 20px; border-top: 1px solid #ddd; }
+                .warning { color: #d32f2f; font-weight: bold; }
+                .important { background-color: #fff3cd; padding: 10px; border-radius: 5px; margin: 15px 0; border-left: 4px solid #ffc107; }
+              </style>
+            </head>
+            <body>
+              <div class="container">
+                <div class="header">
+                  <h1>🔔 Loan Due Date Reminder</h1>
+                </div>
+                <div class="content">
+                  <p>Dear \${customerName},</p>
+                  
+                  <p>This is a friendly reminder that your loan payment is due in <span class="warning">\${daysUntilDue} day\${daysUntilDue !== 1 ? 's' : ''}</span>.</p>
+                  
+                  <h3>📋 Loan Details:</h3>
+                  <div class="loan-details">
+                    <div class="detail-row">
+                      <span class="detail-label">Loan ID:</span>
+                      <span>\${loan.id}</span>
+                    </div>
+                    <div class="detail-row">
+                      <span class="detail-label">Item Pawned:</span>
+                      <span>\${loan.item_description || 'N/A'}</span>
+                    </div>
+                    <div class="detail-row">
+                      <span class="detail-label">Loan Amount:</span>
+                      <span>\$\${parseFloat(loan.loan_amount).toFixed(2)}</span>
+                    </div>
+                    <div class="detail-row">
+                      <span class="detail-label">Interest Amount:</span>
+                      <span>\$\${parseFloat(loan.interest_amount).toFixed(2)}</span>
+                    </div>
+                    <div class="detail-row">
+                      <span class="detail-label">Amount Paid:</span>
+                      <span>\$\${parseFloat(totalPaid).toFixed(2)}</span>
+                    </div>
+                    <div class="detail-row" style="font-weight: bold; border-top: 1px solid #ddd; padding-top: 8px; margin-top: 8px;">
+                      <span class="detail-label">Remaining Balance Due:</span>
+                      <span>\$\${parseFloat(remainingBalance).toFixed(2)}</span>
+                    </div>
+                    <div class="detail-row">
+                      <span class="detail-label">Due Date:</span>
+                      <span>\${new Date(loan.due_date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</span>
+                    </div>
+                  </div>
+                  
+                  <div class="important">
+                    <strong>⚠️ Important:</strong> Please ensure payment is made by the due date to avoid additional fees or penalties. Your loan will be marked as overdue if not paid by \${new Date(loan.due_date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}.
+                  </div>
+                  
+                  <p>If you have any questions or need to make a payment, please contact us immediately at your earliest convenience.</p>
+                  
+                  <p>Thank you for your business!</p>
+                  
+                  <p style="color: #666; font-size: 14px;">Best regards,<br><strong>PawnFlow - Pawn Shop Management System</strong></p>
+                </div>
+                <div class="footer">
+                  <p>This is an automated reminder email. Please do not reply to this email. Contact the pawn shop directly for assistance.</p>
+                </div>
+              </div>
+            </body>
+          </html>
+        \`;
+
+        // Send email
+        const mailOptions = {
+          from: process.env.EMAIL_FROM || process.env.EMAIL_USER,
+          to: loan.email,
+          subject: emailSubject,
+          html: emailHTML,
+        };
+
+        await emailTransporter.sendMail(mailOptions);
+        console.log(\`✅ Email sent to \${loan.email} for loan ID \${loan.id}\`);
+
+      } catch (emailError) {
+        console.error(\`❌ Failed to send email for loan \${loan.id}:\`, emailError.message);
+      }
+    }
+
+    console.log('✅ Due date reminder email job completed');
+  } catch (err) {
+    console.error('❌ Error in due date reminder email job:', err);
   }
 });
 
@@ -920,7 +1107,7 @@ app.post('/create-loan', authenticateToken, requireActiveShift, async (req, res)
         customer_note || null,
         collateral_image || null,
         transactionNumber,
-        loanIssuedDate || new Date().toISOString().slice(0, 10),
+        loanIssuedDate || getLocalDateString(),
         loanTerm,
         dueDate,
         'active',
@@ -2333,7 +2520,7 @@ app.post('/customers/:customerId/loans', authenticateToken, requireActiveShift, 
         customer_note || null,
         collateral_image || null,
         transactionNumber,
-        loanIssuedDate || new Date().toISOString().slice(0, 10),
+        loanIssuedDate || getLocalDateString(),
         loanTerm,
         dueDate,
         'active',
@@ -4891,6 +5078,220 @@ process.on('unhandledRejection', (reason, promise) => {
   console.error('💥 UNHANDLED REJECTION at:', promise);
   console.error('Reason:', reason);
   process.exit(1);
+});
+
+// ======================== HELPER FUNCTION: SEND DUE DATE REMINDER EMAIL ========================
+
+async function sendDueDateReminderEmail(loanId, pool, emailTransporter) {
+  try {
+    const loanResult = await pool.query(
+      `SELECT l.*, c.first_name, c.last_name, c.email, c.mobile_phone
+       FROM loans l
+       JOIN customers c ON l.customer_id = c.id
+       WHERE l.id = $1`,
+      [loanId]
+    );
+
+    if (loanResult.rows.length === 0) {
+      return { success: false, message: 'Loan not found' };
+    }
+
+    const loan = loanResult.rows[0];
+
+    // Validate email
+    if (!loan.email) {
+      return { success: false, message: 'No email address on file for customer' };
+    }
+
+    // Get payment history to calculate amount paid
+    const paymentResult = await pool.query(
+      'SELECT SUM(payment_amount) AS total_paid FROM payment_history WHERE loan_id = $1',
+      [loanId]
+    );
+    const totalPaid = paymentResult.rows[0].total_paid || 0;
+
+    // Calculate remaining balance and days until due
+    const remainingBalance = loan.interest_amount - totalPaid;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const dueDate = new Date(loan.due_date);
+    const daysUntilDue = Math.ceil((dueDate - today) / (1000 * 60 * 60 * 24));
+
+    // Prepare email content
+    const customerName = \`\${loan.first_name} \${loan.last_name}\`;
+    const emailSubject = \`⏰ Loan Due Date Reminder - Your Loan is Due in \${daysUntilDue} Day\${daysUntilDue !== 1 ? 's' : ''}\`;
+
+    const emailHTML = \`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <style>
+            body { font-family: Arial, sans-serif; color: #333; line-height: 1.6; }
+            .container { max-width: 600px; margin: 0 auto; background-color: #f9f9f9; padding: 20px; border-radius: 8px; }
+            .header { background-color: #1a1a1a; color: #fff; padding: 20px; border-radius: 8px 8px 0 0; text-align: center; }
+            .content { background-color: #fff; padding: 20px; }
+            .loan-details { background-color: #f0f0f0; padding: 15px; border-radius: 5px; margin: 15px 0; }
+            .detail-row { display: flex; justify-content: space-between; margin: 8px 0; }
+            .detail-label { font-weight: bold; }
+            .footer { text-align: center; color: #666; font-size: 12px; margin-top: 20px; padding-top: 20px; border-top: 1px solid #ddd; }
+            .warning { color: #d32f2f; font-weight: bold; }
+            .important { background-color: #fff3cd; padding: 10px; border-radius: 5px; margin: 15px 0; border-left: 4px solid #ffc107; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>🔔 Loan Due Date Reminder</h1>
+            </div>
+            <div class="content">
+              <p>Dear \${customerName},</p>
+              
+              <p>This is a friendly reminder that your loan payment is due in <span class="warning">\${daysUntilDue} day\${daysUntilDue !== 1 ? 's' : ''}</span>.</p>
+              
+              <h3>📋 Loan Details:</h3>
+              <div class="loan-details">
+                <div class="detail-row">
+                  <span class="detail-label">Loan ID:</span>
+                  <span>\${loan.id}</span>
+                </div>
+                <div class="detail-row">
+                  <span class="detail-label">Item Pawned:</span>
+                  <span>\${loan.item_description || 'N/A'}</span>
+                </div>
+                <div class="detail-row">
+                  <span class="detail-label">Loan Amount:</span>
+                  <span>\$\${parseFloat(loan.loan_amount).toFixed(2)}</span>
+                </div>
+                <div class="detail-row">
+                  <span class="detail-label">Interest Amount:</span>
+                  <span>\$\${parseFloat(loan.interest_amount).toFixed(2)}</span>
+                </div>
+                <div class="detail-row">
+                  <span class="detail-label">Amount Paid:</span>
+                  <span>\$\${parseFloat(totalPaid).toFixed(2)}</span>
+                </div>
+                <div class="detail-row" style="font-weight: bold; border-top: 1px solid #ddd; padding-top: 8px; margin-top: 8px;">
+                  <span class="detail-label">Remaining Balance Due:</span>
+                  <span>\$\${parseFloat(remainingBalance).toFixed(2)}</span>
+                </div>
+                <div class="detail-row">
+                  <span class="detail-label">Due Date:</span>
+                  <span>\${dueDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</span>
+                </div>
+              </div>
+              
+              <div class="important">
+                <strong>⚠️ Important:</strong> Please ensure payment is made by the due date to avoid additional fees or penalties. Your loan will be marked as overdue if not paid by \${dueDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}.
+              </div>
+              
+              <p>If you have any questions or need to make a payment, please contact us immediately at your earliest convenience.</p>
+              
+              <p>Thank you for your business!</p>
+              
+              <p style="color: #666; font-size: 14px;">Best regards,<br><strong>PawnFlow - Pawn Shop Management System</strong></p>
+            </div>
+            <div class="footer">
+              <p>This is an automated reminder email. Please do not reply to this email. Contact the pawn shop directly for assistance.</p>
+            </div>
+          </div>
+        </body>
+      </html>
+    \`;
+
+    // Send email
+    const mailOptions = {
+      from: process.env.EMAIL_FROM || process.env.EMAIL_USER,
+      to: loan.email,
+      subject: emailSubject,
+      html: emailHTML,
+    };
+
+    await emailTransporter.sendMail(mailOptions);
+    return { success: true, message: \`Email sent successfully to \${loan.email}\` };
+  } catch (err) {
+    console.error('Error sending email:', err);
+    return { success: false, message: err.message };
+  }
+}
+
+// ======================== ENDPOINT: SEND DUE DATE REMINDER EMAIL (Manual) ========================
+
+app.post('/send-due-date-reminder/:loanId', authenticateToken, async (req, res) => {
+  try {
+    const { loanId } = req.params;
+
+    // Verify loan exists
+    const loanResult = await pool.query('SELECT * FROM loans WHERE id = $1', [loanId]);
+    if (loanResult.rows.length === 0) {
+      return res.status(404).json({ message: 'Loan not found' });
+    }
+
+    // Send the reminder email
+    const result = await sendDueDateReminderEmail(loanId, pool, emailTransporter);
+
+    if (result.success) {
+      return res.status(200).json({ message: result.message });
+    } else {
+      return res.status(400).json({ message: result.message });
+    }
+  } catch (err) {
+    console.error('Error in send-due-date-reminder endpoint:', err);
+    res.status(500).json({ message: 'Internal server error', error: err.message });
+  }
+});
+
+// ======================== ENDPOINT: SEND REMINDERS FOR ALL UPCOMING LOANS ========================
+
+app.post('/send-all-due-date-reminders', authenticateToken, async (req, res) => {
+  try {
+    console.log('🔔 Manual trigger: Sending all due date reminders...');
+
+    // Calculate date range: today to 7 days from now
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const sevenDaysLater = new Date(today);
+    sevenDaysLater.setDate(sevenDaysLater.getDate() + 7);
+    sevenDaysLater.setHours(23, 59, 59, 999);
+
+    // Query for active loans with due dates within next 7 days
+    const result = await pool.query(
+      \`SELECT l.*, c.first_name, c.last_name, c.email
+       FROM loans l
+       JOIN customers c ON l.customer_id = c.id
+       WHERE l.status = \$1 
+       AND l.due_date >= \$2 
+       AND l.due_date <= \$3
+       AND c.email IS NOT NULL
+       AND c.email != ''\`,
+      ['active', today.toISOString().split('T')[0], sevenDaysLater.toISOString().split('T')[0]]
+    );
+
+    const loansUpcoming = result.rows;
+    let successCount = 0;
+    let failureCount = 0;
+
+    // Send email for each loan
+    for (let loan of loansUpcoming) {
+      const emailResult = await sendDueDateReminderEmail(loan.id, pool, emailTransporter);
+      if (emailResult.success) {
+        successCount++;
+      } else {
+        failureCount++;
+      }
+    }
+
+    res.status(200).json({
+      message: 'Due date reminder emails processed',
+      totalLoans: loansUpcoming.length,
+      successCount,
+      failureCount,
+      details: \`Successfully sent \${successCount} emails. Failed to send \${failureCount} emails.\`
+    });
+  } catch (err) {
+    console.error('Error in send-all-due-date-reminders endpoint:', err);
+    res.status(500).json({ message: 'Internal server error', error: err.message });
+  }
 });
 
 // Initialize database schema if needed
