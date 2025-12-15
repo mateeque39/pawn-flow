@@ -2072,19 +2072,19 @@ app.get('/customers/:customerId/loans', async (req, res) => {
 
     // Get active loans - search by customer_id
     const activeLoansResult = await pool.query(
-      `SELECT id, transaction_number, loan_amount, interest_rate, interest_amount, total_payable_amount, recurring_fee, redemption_fee, remaining_balance, due_date, loan_issued_date, status, item_description, item_category, street_address, city, state, zipcode, collateral_description FROM loans WHERE customer_id = $1 AND status = 'active' ORDER BY loan_issued_date DESC`,
+      `SELECT id, transaction_number, loan_amount, interest_rate, interest_amount, total_payable_amount, recurring_fee, redemption_fee, remaining_balance, due_date, loan_issued_date, status, item_description, item_category, street_address, city, state, zipcode, collateral_description, collateral_image FROM loans WHERE customer_id = $1 AND status = 'active' ORDER BY loan_issued_date DESC`,
       [customerIdNum]
     );
 
     // Get redeemed loans
     const redeemedLoansResult = await pool.query(
-      `SELECT id, transaction_number, loan_amount, interest_rate, interest_amount, total_payable_amount, recurring_fee, redemption_fee, remaining_balance, due_date, loan_issued_date, status, item_description, item_category, street_address, city, state, zipcode, collateral_description FROM loans WHERE customer_id = $1 AND status = 'redeemed' ORDER BY loan_issued_date DESC`,
+      `SELECT id, transaction_number, loan_amount, interest_rate, interest_amount, total_payable_amount, recurring_fee, redemption_fee, remaining_balance, due_date, loan_issued_date, status, item_description, item_category, street_address, city, state, zipcode, collateral_description, collateral_image FROM loans WHERE customer_id = $1 AND status = 'redeemed' ORDER BY loan_issued_date DESC`,
       [customerIdNum]
     );
 
     // Get forfeited loans
     const forfeitedLoansResult = await pool.query(
-      `SELECT id, transaction_number, loan_amount, interest_rate, interest_amount, total_payable_amount, recurring_fee, redemption_fee, remaining_balance, due_date, loan_issued_date, status, item_description, item_category, street_address, city, state, zipcode, collateral_description FROM loans WHERE customer_id = $1 AND status = 'forfeited' ORDER BY loan_issued_date DESC`,
+      `SELECT id, transaction_number, loan_amount, interest_rate, interest_amount, total_payable_amount, recurring_fee, redemption_fee, remaining_balance, due_date, loan_issued_date, status, item_description, item_category, street_address, city, state, zipcode, collateral_description, collateral_image FROM loans WHERE customer_id = $1 AND status = 'forfeited' ORDER BY loan_issued_date DESC`,
       [customerIdNum]
     );
 
