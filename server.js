@@ -186,10 +186,10 @@ cron.schedule('0 8 * * *', async () => {
         const remainingBalance = loan.interest_amount - totalPaid;
 
         // Prepare email content
-        const customerName = \`\${loan.first_name} \${loan.last_name}\`;
-        const emailSubject = \`⏰ Loan Due Date Reminder - Your Loan is Due in \${daysUntilDue} Day\${daysUntilDue !== 1 ? 's' : ''}\`;
+        const customerName = `${loan.first_name} ${loan.last_name}`;
+        const emailSubject = `⏰ Loan Due Date Reminder - Your Loan is Due in ${daysUntilDue} Day${daysUntilDue !== 1 ? 's' : ''}`;
         
-        const emailHTML = \`
+        const emailHTML = `
           <!DOCTYPE html>
           <html>
             <head>
@@ -212,44 +212,44 @@ cron.schedule('0 8 * * *', async () => {
                   <h1>🔔 Loan Due Date Reminder</h1>
                 </div>
                 <div class="content">
-                  <p>Dear \${customerName},</p>
+                  <p>Dear ${customerName},</p>
                   
-                  <p>This is a friendly reminder that your loan payment is due in <span class="warning">\${daysUntilDue} day\${daysUntilDue !== 1 ? 's' : ''}</span>.</p>
+                  <p>This is a friendly reminder that your loan payment is due in <span class="warning">${daysUntilDue} day${daysUntilDue !== 1 ? 's' : ''}</span>.</p>
                   
                   <h3>📋 Loan Details:</h3>
                   <div class="loan-details">
                     <div class="detail-row">
                       <span class="detail-label">Loan ID:</span>
-                      <span>\${loan.id}</span>
+                      <span>${loan.id}</span>
                     </div>
                     <div class="detail-row">
                       <span class="detail-label">Item Pawned:</span>
-                      <span>\${loan.item_description || 'N/A'}</span>
+                      <span>${loan.item_description || 'N/A'}</span>
                     </div>
                     <div class="detail-row">
                       <span class="detail-label">Loan Amount:</span>
-                      <span>\$\${parseFloat(loan.loan_amount).toFixed(2)}</span>
+                      <span>$${parseFloat(loan.loan_amount).toFixed(2)}</span>
                     </div>
                     <div class="detail-row">
                       <span class="detail-label">Interest Amount:</span>
-                      <span>\$\${parseFloat(loan.interest_amount).toFixed(2)}</span>
+                      <span>$${parseFloat(loan.interest_amount).toFixed(2)}</span>
                     </div>
                     <div class="detail-row">
                       <span class="detail-label">Amount Paid:</span>
-                      <span>\$\${parseFloat(totalPaid).toFixed(2)}</span>
+                      <span>$${parseFloat(totalPaid).toFixed(2)}</span>
                     </div>
                     <div class="detail-row" style="font-weight: bold; border-top: 1px solid #ddd; padding-top: 8px; margin-top: 8px;">
                       <span class="detail-label">Remaining Balance Due:</span>
-                      <span>\$\${parseFloat(remainingBalance).toFixed(2)}</span>
+                      <span>$${parseFloat(remainingBalance).toFixed(2)}</span>
                     </div>
                     <div class="detail-row">
                       <span class="detail-label">Due Date:</span>
-                      <span>\${new Date(loan.due_date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</span>
+                      <span>${new Date(loan.due_date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</span>
                     </div>
                   </div>
                   
                   <div class="important">
-                    <strong>⚠️ Important:</strong> Please ensure payment is made by the due date to avoid additional fees or penalties. Your loan will be marked as overdue if not paid by \${new Date(loan.due_date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}.
+                    <strong>⚠️ Important:</strong> Please ensure payment is made by the due date to avoid additional fees or penalties. Your loan will be marked as overdue if not paid by ${new Date(loan.due_date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}.
                   </div>
                   
                   <p>If you have any questions or need to make a payment, please contact us immediately at your earliest convenience.</p>
@@ -264,7 +264,7 @@ cron.schedule('0 8 * * *', async () => {
               </div>
             </body>
           </html>
-        \`;
+        `;
 
         // Send email
         const mailOptions = {
@@ -5118,10 +5118,10 @@ async function sendDueDateReminderEmail(loanId, pool, emailTransporter) {
     const daysUntilDue = Math.ceil((dueDate - today) / (1000 * 60 * 60 * 24));
 
     // Prepare email content
-    const customerName = \`\${loan.first_name} \${loan.last_name}\`;
-    const emailSubject = \`⏰ Loan Due Date Reminder - Your Loan is Due in \${daysUntilDue} Day\${daysUntilDue !== 1 ? 's' : ''}\`;
+    const customerName = `${loan.first_name} ${loan.last_name}`;
+    const emailSubject = `⏰ Loan Due Date Reminder - Your Loan is Due in ${daysUntilDue} Day${daysUntilDue !== 1 ? 's' : ''}`;
 
-    const emailHTML = \`
+    const emailHTML = `
       <!DOCTYPE html>
       <html>
         <head>
@@ -5144,44 +5144,44 @@ async function sendDueDateReminderEmail(loanId, pool, emailTransporter) {
               <h1>🔔 Loan Due Date Reminder</h1>
             </div>
             <div class="content">
-              <p>Dear \${customerName},</p>
+              <p>Dear ${customerName},</p>
               
-              <p>This is a friendly reminder that your loan payment is due in <span class="warning">\${daysUntilDue} day\${daysUntilDue !== 1 ? 's' : ''}</span>.</p>
+              <p>This is a friendly reminder that your loan payment is due in <span class="warning">${daysUntilDue} day${daysUntilDue !== 1 ? 's' : ''}</span>.</p>
               
               <h3>📋 Loan Details:</h3>
               <div class="loan-details">
                 <div class="detail-row">
                   <span class="detail-label">Loan ID:</span>
-                  <span>\${loan.id}</span>
+                  <span>${loan.id}</span>
                 </div>
                 <div class="detail-row">
                   <span class="detail-label">Item Pawned:</span>
-                  <span>\${loan.item_description || 'N/A'}</span>
+                  <span>${loan.item_description || 'N/A'}</span>
                 </div>
                 <div class="detail-row">
                   <span class="detail-label">Loan Amount:</span>
-                  <span>\$\${parseFloat(loan.loan_amount).toFixed(2)}</span>
+                  <span>$${parseFloat(loan.loan_amount).toFixed(2)}</span>
                 </div>
                 <div class="detail-row">
                   <span class="detail-label">Interest Amount:</span>
-                  <span>\$\${parseFloat(loan.interest_amount).toFixed(2)}</span>
+                  <span>$${parseFloat(loan.interest_amount).toFixed(2)}</span>
                 </div>
                 <div class="detail-row">
                   <span class="detail-label">Amount Paid:</span>
-                  <span>\$\${parseFloat(totalPaid).toFixed(2)}</span>
+                  <span>$${parseFloat(totalPaid).toFixed(2)}</span>
                 </div>
                 <div class="detail-row" style="font-weight: bold; border-top: 1px solid #ddd; padding-top: 8px; margin-top: 8px;">
                   <span class="detail-label">Remaining Balance Due:</span>
-                  <span>\$\${parseFloat(remainingBalance).toFixed(2)}</span>
+                  <span>$${parseFloat(remainingBalance).toFixed(2)}</span>
                 </div>
                 <div class="detail-row">
                   <span class="detail-label">Due Date:</span>
-                  <span>\${dueDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</span>
+                  <span>${dueDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</span>
                 </div>
               </div>
               
               <div class="important">
-                <strong>⚠️ Important:</strong> Please ensure payment is made by the due date to avoid additional fees or penalties. Your loan will be marked as overdue if not paid by \${dueDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}.
+                <strong>⚠️ Important:</strong> Please ensure payment is made by the due date to avoid additional fees or penalties. Your loan will be marked as overdue if not paid by ${dueDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}.
               </div>
               
               <p>If you have any questions or need to make a payment, please contact us immediately at your earliest convenience.</p>
@@ -5196,7 +5196,7 @@ async function sendDueDateReminderEmail(loanId, pool, emailTransporter) {
           </div>
         </body>
       </html>
-    \`;
+    `;
 
     // Send email
     const mailOptions = {
