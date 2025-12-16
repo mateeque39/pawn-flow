@@ -3742,6 +3742,8 @@ app.get('/detailed-loans-breakdown', authenticateToken, async (req, res) => {
   try {
     const { startDate, endDate, status = 'all' } = req.query;
 
+    console.log('🔍 /detailed-loans-breakdown called with:', { startDate, endDate, status });
+
     // Validate date parameters (optional for flexibility)
     let dateFilter = '';
     const params = [];
@@ -3767,6 +3769,8 @@ app.get('/detailed-loans-breakdown', authenticateToken, async (req, res) => {
       statusFilter = `AND (l.status = 'overdue' OR (l.status = 'active' AND l.due_date < CURRENT_DATE))`;
     }
     // If status === 'all', no filter applied
+
+    console.log('📝 Building query with filters:', { statusFilter, dateFilter, params });
 
     // Get all loans with customer info and payment status
     let query = `
@@ -3804,7 +3808,9 @@ app.get('/detailed-loans-breakdown', authenticateToken, async (req, res) => {
       ORDER BY l.customer_name ASC, l.loan_issued_date ASC
     `;
 
+    console.log('🔧 Executing query...');
     const result = await pool.query(query, params);
+    console.log('✅ Query successful, rows:', result.rows.length);
 
     if (result.rows.length === 0) {
       return res.json({
