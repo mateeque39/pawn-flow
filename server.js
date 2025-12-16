@@ -3738,7 +3738,7 @@ app.get('/balancing-report', async (req, res) => {
 
 // GET DETAILED LOANS BREAKDOWN - Active & Overdue loans with due dates, payment status, sorted by customer
 // Frontend calls: GET /detailed-loans-breakdown?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD&status=active|overdue|all
-app.get('/detailed-loans-breakdown', async (req, res) => {
+app.get('/detailed-loans-breakdown', authenticateToken, async (req, res) => {
   try {
     const { startDate, endDate, status = 'all' } = req.query;
 
@@ -3969,7 +3969,7 @@ app.post('/shift/add-cash', async (req, res) => {
 // ======================== CASH REPORT ========================
 
 // GET CASH REPORT - Generate daily cash report
-app.get('/cash-report', authenticateToken, authorizeRole('admin', 'manager'), async (req, res) => {
+app.get('/cash-report', authenticateToken, async (req, res) => {
   const { date } = req.query;
 
   console.log('📊 /cash-report endpoint called with date:', date);
