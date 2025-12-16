@@ -3808,6 +3808,9 @@ app.get('/detailed-loans-breakdown', authenticateToken, async (req, res) => {
 
     console.log('🔧 Executing simplified query...');
 
+    // Execute the query
+    const result = await pool.query(simplifiedQuery, params);
+
     if (result.rows.length === 0) {
       return res.json({
         message: 'No loans found for the specified criteria',
@@ -4158,14 +4161,7 @@ app.get('/cash-report', authenticateToken, async (req, res) => {
      );
      const overdueLoanCount = parseInt(overdueLoanResult.rows[0].count) || 0;
 
-     // Check if we have data for the report
-     const hasData = newLoans.qty > 0 || partialPayments.qty > 0 || redemptions.qty > 0 || shiftResult.rows.length > 0;
-
-     if (!hasData) {
-       return res.status(404).json({ message: 'No transaction data available for the provided date' });
-     }
-
-     // Build and return the report
+     // Build and return the report (even if empty)
      const report = {
        pawnActivity: {
          newLoans,
