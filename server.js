@@ -3772,8 +3772,8 @@ app.get('/detailed-loans-breakdown', authenticateToken, async (req, res) => {
 
     console.log('📝 Building query with filters:', { statusFilter, dateFilter, params });
 
-    // Get all loans with customer info and payment status
-    let query = `
+    // Get all loans with customer info and payment status using subqueries to avoid GROUP BY issues
+    const simplifiedQuery = `
       SELECT 
         l.id,
         l.transaction_number,
@@ -3788,9 +3788,9 @@ app.get('/detailed-loans-breakdown', authenticateToken, async (req, res) => {
         l.status,
         l.remaining_balance,
         l.total_payable_amount,
-        COALESCE(SUM(ph.payment_amount), 0) as total_paid,
-        CASE WHEN COALESCE(SUM(ph.payment_amount), 0) > 0 THEN true ELSE false END as has_payment,
-        COUNT(DISTINCT ph.id) as payment_count,
+        COALESCE((SELECT SUM(payment_amount) FROM payment_history WHERE loan_id = l.id), 0) as total_paid,
+        CASE WHEN COALESCE((SELECT SUM(payment_amount) FROM payment_history WHERE loan_id = l.id), 0) > 0 THEN true ELSE false END as has_payment,
+        COALESCE((SELECT COUNT(DISTINCT id) FROM payment_history WHERE loan_id = l.id), 0) as payment_count,
         CASE 
           WHEN l.due_date < CURRENT_DATE AND l.status = 'active' THEN 'overdue'
           WHEN l.due_date = CURRENT_DATE THEN 'due-today'
@@ -3802,15 +3802,11 @@ app.get('/detailed-loans-breakdown', authenticateToken, async (req, res) => {
         END as days_overdue
       FROM loans l
       LEFT JOIN customers c ON l.customer_id = c.id
-      LEFT JOIN payment_history ph ON l.id = ph.loan_id
       WHERE 1=1 ${statusFilter} ${dateFilter}
-      GROUP BY l.id, l.transaction_number, l.customer_name, c.id, c.first_name, c.last_name, l.loan_amount, l.interest_amount, l.due_date, l.loan_issued_date, l.status, l.remaining_balance, l.total_payable_amount
       ORDER BY l.customer_name ASC, l.loan_issued_date ASC
     `;
 
-    console.log('🔧 Executing query...');
-    const result = await pool.query(query, params);
-    console.log('✅ Query successful, rows:', result.rows.length);
+    console.log('🔧 Executing simplified query...');
 
     if (result.rows.length === 0) {
       return res.json({
