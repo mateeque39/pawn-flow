@@ -3800,7 +3800,7 @@ app.get('/detailed-loans-breakdown', async (req, res) => {
       LEFT JOIN customers c ON l.customer_id = c.id
       LEFT JOIN payment_history ph ON l.id = ph.loan_id
       WHERE 1=1 ${statusFilter} ${dateFilter}
-      GROUP BY l.id, c.id
+      GROUP BY l.id, l.transaction_number, l.customer_name, c.id, c.first_name, c.last_name, l.loan_amount, l.interest_amount, l.due_date, l.loan_issued_date, l.status, l.remaining_balance, l.total_payable_amount
       ORDER BY l.customer_name ASC, l.loan_issued_date ASC
     `;
 
