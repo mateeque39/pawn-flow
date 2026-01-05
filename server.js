@@ -5339,30 +5339,8 @@ async function initializeDatabase() {
   try {
     console.log('📋 Starting comprehensive database initialization...');
 
-    // Run all migrations first
-    console.log('🔧 Running database migrations...');
-    const fs = require('fs');
-    const path = require('path');
-    
-    const migrationsDir = path.join(__dirname, 'migrations');
-    if (fs.existsSync(migrationsDir)) {
-      const files = fs.readdirSync(migrationsDir)
-        .filter(f => f.endsWith('.sql'))
-        .sort();
-
-      for (const file of files) {
-        const filePath = path.join(migrationsDir, file);
-        const sql = fs.readFileSync(filePath, 'utf8');
-        
-        try {
-          await pool.query(sql);
-          console.log(`✅ Migration completed: ${file}`);
-        } catch (err) {
-          console.log(`⚠️  Migration notice ${file}: ${err.message.split('\n')[0]}`);
-        }
-      }
-      console.log('✨ All migrations executed!');
-    }
+    // Skip file-based migrations - they should be run manually via: railway run node run-migrations.js
+    // The following code ensures critical tables exist for the application to function
 
     // ====================
     // 1. CUSTOMERS TABLE
