@@ -1,1 +1,1 @@
-web: npm install && node run-migrations.js && node server.js
+web: node server.js

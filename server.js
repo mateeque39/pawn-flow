@@ -5513,27 +5513,77 @@ async function initializeDatabase() {
 // Initialize database before starting server
 initializeDatabase().then(() => {
   console.log('✅ Database initialized');
-});
+  
+  // Run migrations before starting server
+  return runMigrations();
+}).then(() => {
+  // Start HTTP server
+  console.log('⚙️  Starting PawnFlow Server...');
+  console.log('🔌 Listening on port', PORT);
 
-// Start HTTP server
-console.log('⚙️  Starting PawnFlow Server...');
-console.log('🔌 Listening on port', PORT);
+  const server = app.listen(PORT, () => {
+    console.log(`🚀 Server is running on port ${PORT}`);
+    console.log('✅ Server started successfully');
+  });
 
-const server = app.listen(PORT, () => {
-  console.log(`🚀 Server is running on port ${PORT}`);
-  console.log('✅ Server started successfully');
-});
+  // Handle server errors
+  server.on('error', (err) => {
+    console.error('❌ Server error:', err.message);
+    process.exit(1);
+  });
 
-// Handle server errors
-server.on('error', (err) => {
-  console.error('❌ Server error:', err.message);
+  // Log when server closes
+  server.on('close', () => {
+    console.log('⚠️  Server closed');
+  });
+}).catch((err) => {
+  console.error('❌ Fatal error during initialization:', err);
   process.exit(1);
 });
 
-// Log when server closes
-server.on('close', () => {
-  console.log('⚠️  Server closed');
-});
+// Function to run all migrations
+async function runMigrations() {
+  const fs = require('fs');
+  const path = require('path');
+  
+  try {
+    const migrationsDir = path.join(__dirname, 'migrations');
+    
+    if (!fs.existsSync(migrationsDir)) {
+      console.log('⚠️  No migrations directory found');
+      return;
+    }
+    
+    const files = fs.readdirSync(migrationsDir)
+      .filter(f => f.endsWith('.sql'))
+      .sort();
+
+    console.log(`📁 Found ${files.length} migration files`);
+
+    for (const file of files) {
+      const filePath = path.join(migrationsDir, file);
+      const sql = fs.readFileSync(filePath, 'utf8');
+      
+      console.log(`⏳ Running: ${file}`);
+      
+      try {
+        await pool.query(sql);
+        console.log(`✅ Completed: ${file}`);
+      } catch (err) {
+        if (err.message.includes('already exists') || err.message.includes('duplicate key')) {
+          console.log(`⚠️  ${file} (already applied): ${err.message.substring(0, 50)}`);
+        } else {
+          console.warn(`⚠️  Error in ${file}: ${err.message}`);
+        }
+      }
+    }
+    
+    console.log('✨ Migrations completed!');
+  } catch (err) {
+    console.error('❌ Migration error:', err);
+    throw err;
+  }
+}
 
 
 
