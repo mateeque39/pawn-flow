@@ -50,17 +50,17 @@ const PORT = process.env.PORT || 5000;
 // Build database connection string
 // Support multiple ways to configure the database connection
 const getDatabaseUrl = () => {
-  // First priority: explicit DATABASE_URL env var
+  // First priority: explicit DATABASE_URL env var (Railway sets this)
   if (process.env.DATABASE_URL) {
     console.log('📍 Using DATABASE_URL from environment');
     return process.env.DATABASE_URL;
   }
   
   // Second priority: Railway-style individual connection variables
-  if (process.env.PGHOST && process.env.PGPORT && process.env.PGDATABASE) {
-    const url = `postgresql://${process.env.PGUSER || 'postgres'}:${process.env.PGPASSWORD}@${process.env.PGHOST}:${process.env.PGPORT}/${process.env.PGDATABASE}`;
-    console.log('📍 Using Railway PostgreSQL environment variables');
-    return url;
+  if (process.env.PGHOST) {
+    const connectionString = `postgresql://${process.env.PGUSER || 'postgres'}:${process.env.PGPASSWORD || ''}@${process.env.PGHOST}:${process.env.PGPORT || 5432}/${process.env.PGDATABASE || 'railway'}`;
+    console.log('📍 Using Railway PostgreSQL environment variables (PGHOST, PGUSER, etc.)');
+    return connectionString;
   }
   
   // Third priority: Local development defaults
@@ -70,20 +70,37 @@ const getDatabaseUrl = () => {
 };
 
 const DATABASE_URL = getDatabaseUrl();
-console.log('🔌 Connecting to database:', DATABASE_URL.replace(/:[^:]+@/, ':****@'));
+// Log connection string with password masked
+const loggingUrl = DATABASE_URL.replace(/:[^:@]+@/, ':****@').replace(/@.*/, '@****');
+console.log('🔌 Database URL:', loggingUrl);
 
 const pool = new Pool({
   connectionString: DATABASE_URL,
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+  // Pool settings
+  max: 20,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 2000,
 });
 
 // Add pool error handlers
 pool.on('error', (err) => {
-  console.error('❌ Unexpected pool error:', err);
+  console.error('❌ Unexpected pool error:', err.message);
+  // Don't exit - allow graceful degradation
 });
 
 pool.on('connect', () => {
   console.log('✅ Database pool connected');
+});
+
+// Test the connection on startup
+pool.query('SELECT NOW()', (err, res) => {
+  if (err) {
+    console.error('❌ Failed to connect to database:', err.message);
+    console.error('Database URL:', DATABASE_URL.replace(/:[^:@]+@/, ':****@'));
+  } else {
+    console.log('✅ Database connection test passed at:', res.rows[0].now);
+  }
 });
 
 // ======================== EMAIL TRANSPORTER CONFIGURATION ========================
