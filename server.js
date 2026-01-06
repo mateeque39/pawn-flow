@@ -47,8 +47,33 @@ console.log(`✅ JWT_SECRET configured: ${JWT_SECRET.length} characters`);
 // Configure port
 const PORT = process.env.PORT || 5000;
 
+// Build database connection string
+// Support multiple ways to configure the database connection
+const getDatabaseUrl = () => {
+  // First priority: explicit DATABASE_URL env var
+  if (process.env.DATABASE_URL) {
+    console.log('📍 Using DATABASE_URL from environment');
+    return process.env.DATABASE_URL;
+  }
+  
+  // Second priority: Railway-style individual connection variables
+  if (process.env.PGHOST && process.env.PGPORT && process.env.PGDATABASE) {
+    const url = `postgresql://${process.env.PGUSER || 'postgres'}:${process.env.PGPASSWORD}@${process.env.PGHOST}:${process.env.PGPORT}/${process.env.PGDATABASE}`;
+    console.log('📍 Using Railway PostgreSQL environment variables');
+    return url;
+  }
+  
+  // Third priority: Local development defaults
+  const localUrl = `postgresql://${process.env.DB_USER || 'postgres'}:${process.env.DB_PASSWORD || '1234'}@${process.env.DB_HOST || 'localhost'}:${process.env.DB_PORT || 5432}/${process.env.DB_NAME || 'pawn_shop'}`;
+  console.log('📍 Using local development database configuration');
+  return localUrl;
+};
+
+const DATABASE_URL = getDatabaseUrl();
+console.log('🔌 Connecting to database:', DATABASE_URL.replace(/:[^:]+@/, ':****@'));
+
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
+  connectionString: DATABASE_URL,
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
 });
 
@@ -493,15 +518,23 @@ app.post('/login', async (req, res) => {
   const { username, password } = req.body;
 
   try {
+    console.log(`🔐 Login attempt for username: ${username}`);
+    
     const result = await pool.query('SELECT * FROM users WHERE username = $1', [username]);
 
     const user = result.rows[0];
-    if (!user) return res.status(400).json({ message: 'Invalid credentials' });
+    if (!user) {
+      console.warn(`⚠️ Login failed - user not found: ${username}`);
+      return res.status(400).json({ message: 'Invalid credentials' });
+    }
 
     const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) return res.status(400).json({ message: 'Invalid credentials' });
+    if (!isMatch) {
+      console.warn(`⚠️ Login failed - password mismatch for user: ${username}`);
+      return res.status(400).json({ message: 'Invalid credentials' });
+    }
 
-    console.log(`📝 Login successful for user: ${username}`);
+    console.log(`✅ Login successful for user: ${username}`);
     
     const token = jwt.sign({ id: user.id, role: user.role_id }, JWT_SECRET, { expiresIn: '24h' });
 
@@ -512,8 +545,12 @@ app.post('/login', async (req, res) => {
       role: user.role_id
     });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: 'Error logging in' });
+    console.error(`❌ Login error for ${username}:`, err.message);
+    console.error('Error details:', err);
+    res.status(500).json({ 
+      message: 'Error logging in',
+      error: process.env.NODE_ENV === 'development' ? err.message : undefined 
+    });
   }
 });
 
