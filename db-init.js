@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS users (
 -- Create loans table (referenced by most history tables)
 CREATE TABLE IF NOT EXISTS loans (
     id SERIAL PRIMARY KEY,
+    customer_id INTEGER,
     customer_name VARCHAR(100) NOT NULL,
     customer_number VARCHAR(50),
     loan_amount NUMERIC NOT NULL,
@@ -51,7 +52,9 @@ CREATE TABLE IF NOT EXISTS loans (
     zipcode VARCHAR(32),
     interest_amount NUMERIC(10,2),
     total_payable_amount NUMERIC(10,2),
+    recurring_fee NUMERIC(10,2) DEFAULT 0,
     collateral_description TEXT,
+    collateral_image TEXT,
     customer_note TEXT,
     loan_issued_date DATE,
     loan_term INTEGER,
