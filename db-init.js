@@ -285,18 +285,30 @@ async function initializeDatabase(pool) {
       console.log('✅ Default admin user created (username: admin, password: admin123)');
     }
     
-    // Initialize admin settings with default password (upsert - update or insert)
+    // Initialize admin settings with default password (update or insert)
     console.log('🔧 Initializing admin settings...');
     const defaultPassword = 'qasim12345'; // Default password - MUST be changed
     const hashedPassword = await bcrypt.hash(defaultPassword, 10);
     
-    // Use UPSERT to update password if exists, insert if not
-    await client.query(`
-      INSERT INTO admin_settings (admin_password) VALUES ($1)
-      ON CONFLICT (id) DO UPDATE SET admin_password = $1, updated_at = CURRENT_TIMESTAMP
-    `, [hashedPassword]);
+    // Check if admin_settings record exists
+    const adminSettingsCheck = await client.query('SELECT COUNT(*) as count FROM admin_settings');
+    const settingsExist = parseInt(adminSettingsCheck.rows[0].count) > 0;
     
-    console.log('✅ Admin settings initialized with default password: qasim12345');
+    if (settingsExist) {
+      // Update existing record
+      await client.query(
+        'UPDATE admin_settings SET admin_password = $1, updated_at = CURRENT_TIMESTAMP',
+        [hashedPassword]
+      );
+      console.log('✅ Admin settings updated with default password: qasim12345');
+    } else {
+      // Insert new record
+      await client.query(
+        'INSERT INTO admin_settings (admin_password) VALUES ($1)',
+        [hashedPassword]
+      );
+      console.log('✅ Admin settings initialized with default password: qasim12345');
+    }
     
     // Verify all tables exist
     const result = await client.query(`
