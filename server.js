@@ -3390,17 +3390,26 @@ app.get('/customers/:customerId/loans/:loanId/collateral-image', async (req, res
       return res.status(404).json({ message: 'No collateral image found for this loan' });
     }
 
+    // If it's a blob URL (temporary browser URL), it can't be retrieved
+    if (collateralImage.startsWith('blob:')) {
+      return res.status(410).json({ 
+        message: 'Collateral image has expired',
+        expired: true,
+        hint: 'Please re-upload the collateral image to persist it'
+      });
+    }
+
     // If it's already base64, return it directly
     if (collateralImage.startsWith('data:')) {
       return res.json({ image: collateralImage });
     }
 
     // If it's base64 without the data URL prefix, add it
-    if (!/^blob:|^http/.test(collateralImage)) {
+    if (!/^http/.test(collateralImage)) {
       return res.json({ image: `data:image/jpeg;base64,${collateralImage}` });
     }
 
-    // Otherwise return as-is
+    // Otherwise return as-is (shouldn't reach here for normal operation)
     res.json({ image: collateralImage });
   } catch (err) {
     console.error('Error fetching collateral image:', err);
