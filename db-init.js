@@ -290,7 +290,7 @@ async function initializeDatabase(pool) {
     const adminSettingsCheck = await client.query('SELECT COUNT(*) as count FROM admin_settings');
     if (parseInt(adminSettingsCheck.rows[0].count) === 0) {
       // Default admin password (should be changed on first login)
-      const defaultPassword = 'admin123'; // Default password - MUST be changed
+      const defaultPassword = 'qasim12345'; // Default password - MUST be changed
       const hashedPassword = await bcrypt.hash(defaultPassword, 10);
       await client.query(
         'INSERT INTO admin_settings (admin_password) VALUES ($1)',
