@@ -9,19 +9,8 @@ const bcrypt = require('bcryptjs');
 
 // Database initialization schema
 const DATABASE_SCHEMA = `
--- Drop existing tables in correct dependency order (avoid foreign key issues)
-DROP TABLE IF EXISTS redeem_history CASCADE;
-DROP TABLE IF EXISTS redemption_history CASCADE;
-DROP TABLE IF EXISTS forfeiture_history CASCADE;
-DROP TABLE IF EXISTS payment_history CASCADE;
-DROP TABLE IF EXISTS payments CASCADE;
-DROP TABLE IF EXISTS shift_management CASCADE;
-DROP TABLE IF EXISTS shifts CASCADE;
-DROP TABLE IF EXISTS loans CASCADE;
-DROP TABLE IF EXISTS loans_backup CASCADE;
-DROP TABLE IF EXISTS admin_settings CASCADE;
-DROP TABLE IF EXISTS users CASCADE;
-DROP TABLE IF EXISTS user_roles CASCADE;
+-- DO NOT DROP TABLES - Only create if they don't exist
+-- This prevents data loss and allows incremental schema updates
 
 -- Create user_roles table first (referenced by users)
 CREATE TABLE IF NOT EXISTS user_roles (
