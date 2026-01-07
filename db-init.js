@@ -279,8 +279,8 @@ async function initializeDatabase(pool) {
       
       // Create default admin user
       await client.query(
-        'INSERT INTO users (username, password, role_id, is_active) VALUES ($1, $2, $3, $4)',
-        ['admin', hashedPassword, adminRoleId, true]
+        'INSERT INTO users (username, password, role_id) VALUES ($1, $2, $3)',
+        ['admin', hashedPassword, adminRoleId]
       );
       console.log('✅ Default admin user created (username: admin, password: admin123)');
     }
