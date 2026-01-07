@@ -285,19 +285,18 @@ async function initializeDatabase(pool) {
       console.log('✅ Default admin user created (username: admin, password: admin123)');
     }
     
-    // Initialize admin settings with default password if not exists
+    // Initialize admin settings with default password (upsert - update or insert)
     console.log('🔧 Initializing admin settings...');
-    const adminSettingsCheck = await client.query('SELECT COUNT(*) as count FROM admin_settings');
-    if (parseInt(adminSettingsCheck.rows[0].count) === 0) {
-      // Default admin password (should be changed on first login)
-      const defaultPassword = 'qasim12345'; // Default password - MUST be changed
-      const hashedPassword = await bcrypt.hash(defaultPassword, 10);
-      await client.query(
-        'INSERT INTO admin_settings (admin_password) VALUES ($1)',
-        [hashedPassword]
-      );
-      console.log('✅ Admin settings initialized with default password');
-    }
+    const defaultPassword = 'qasim12345'; // Default password - MUST be changed
+    const hashedPassword = await bcrypt.hash(defaultPassword, 10);
+    
+    // Use UPSERT to update password if exists, insert if not
+    await client.query(`
+      INSERT INTO admin_settings (admin_password) VALUES ($1)
+      ON CONFLICT (id) DO UPDATE SET admin_password = $1, updated_at = CURRENT_TIMESTAMP
+    `, [hashedPassword]);
+    
+    console.log('✅ Admin settings initialized with default password: qasim12345');
     
     // Verify all tables exist
     const result = await client.query(`
