@@ -1515,7 +1515,7 @@ app.post('/redeem-loan', authenticateToken, requireActiveShift, async (req, res)
 
 
 // Forfeit Loan route
-app.post('/forfeit-loan', requireActiveShift, async (req, res) => {
+app.post('/forfeit-loan', authenticateToken, requireActiveShift, async (req, res) => {
   const { loanId, userId } = req.body;
 
   try {
@@ -3040,7 +3040,7 @@ app.post('/customers/:customerId/loans/:loanId/forfeit', authenticateToken, requ
 });
 
 // REACTIVATE FORFEITED LOAN FOR CUSTOMER - POST /customers/:customerId/loans/:loanId/reactivate
-app.post('/customers/:customerId/loans/:loanId/reactivate', requireActiveShift, async (req, res) => {
+app.post('/customers/:customerId/loans/:loanId/reactivate', authenticateToken, requireActiveShift, async (req, res) => {
   const { customerId, loanId } = req.params;
   const { reactivatedByUserId, reactivatedByUsername, reactivationDate } = req.body;
 
@@ -3208,7 +3208,7 @@ app.post('/customers/:customerId/loans/:loanId/extend-due-date', authenticateTok
 
 
 // APPLY DISCOUNT TO LOAN - POST /customers/:customerId/loans/:loanId/discount
-app.post('/customers/:customerId/loans/:loanId/discount', requireActiveShift, async (req, res) => {
+app.post('/customers/:customerId/loans/:loanId/discount', authenticateToken, requireActiveShift, async (req, res) => {
   const { customerId, loanId } = req.params;
   const { discountAmount, userId, username } = req.body;
 
@@ -3259,7 +3259,7 @@ app.post('/customers/:customerId/loans/:loanId/discount', requireActiveShift, as
 });
 
 // ADD MONEY TO CUSTOMER LOAN - POST /customers/:customerId/loans/:loanId/add-money
-app.post('/customers/:customerId/loans/:loanId/add-money', requireActiveShift, async (req, res) => {
+app.post('/customers/:customerId/loans/:loanId/add-money', authenticateToken, requireActiveShift, async (req, res) => {
   const { customerId, loanId } = req.params;
   const { amount } = req.body;
 
