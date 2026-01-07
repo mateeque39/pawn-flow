@@ -265,6 +265,26 @@ async function initializeDatabase(pool) {
     `);
     console.log('✅ Default roles initialized');
     
+    // Initialize admin user if not exists
+    console.log('🔧 Initializing admin user...');
+    const adminUserCheck = await client.query('SELECT COUNT(*) as count FROM users WHERE username = $1', ['admin']);
+    if (parseInt(adminUserCheck.rows[0].count) === 0) {
+      // Default admin password (should be changed on first login)
+      const defaultPassword = 'admin123'; // Default password - MUST be changed
+      const hashedPassword = await bcrypt.hash(defaultPassword, 10);
+      
+      // Get admin role ID
+      const roleResult = await client.query('SELECT id FROM user_roles WHERE role_name = $1', ['admin']);
+      const adminRoleId = roleResult.rows[0] ? roleResult.rows[0].id : 1;
+      
+      // Create default admin user
+      await client.query(
+        'INSERT INTO users (username, password, role_id, is_active) VALUES ($1, $2, $3, $4)',
+        ['admin', hashedPassword, adminRoleId, true]
+      );
+      console.log('✅ Default admin user created (username: admin, password: admin123)');
+    }
+    
     // Initialize admin settings with default password if not exists
     console.log('🔧 Initializing admin settings...');
     const adminSettingsCheck = await client.query('SELECT COUNT(*) as count FROM admin_settings');
