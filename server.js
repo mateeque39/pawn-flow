@@ -6,6 +6,7 @@ const { Pool } = require('pg');
 const validators = require('./validators');
 const { generateLoanPDF } = require('./pdf-invoice-generator');
 const nodemailer = require('nodemailer');
+const { initializeDatabase, isDatabaseInitialized } = require('./db-init');
 require('dotenv').config();
 
 const app = express();
@@ -93,13 +94,47 @@ pool.on('connect', () => {
   console.log('✅ Database pool connected');
 });
 
-// Test the connection on startup
-pool.query('SELECT NOW()', (err, res) => {
+// Test the connection on startup and initialize database
+pool.query('SELECT NOW()', async (err, res) => {
   if (err) {
     console.error('❌ Failed to connect to database:', err.message);
     console.error('Database URL:', DATABASE_URL.replace(/:[^:@]+@/, ':****@'));
+    process.exit(1);
   } else {
     console.log('✅ Database connection test passed at:', res.rows[0].now);
+    
+    // Initialize database schema (creates tables if they don't exist)
+    try {
+      console.log('🔄 Initializing database schema...');
+      await initializeDatabase(pool);
+      console.log('✅ Database schema initialized');
+      
+      // Run migrations after schema initialization
+      await runMigrations();
+      
+      // Start HTTP server
+      console.log('⚙️  Starting PawnFlow Server...');
+      console.log('🔌 Listening on port', PORT);
+
+      const server = app.listen(PORT, () => {
+        console.log(`🚀 Server is running on port ${PORT}`);
+        console.log('✅ Server started successfully');
+      });
+
+      // Handle server errors
+      server.on('error', (err) => {
+        console.error('❌ Server error:', err.message);
+        process.exit(1);
+      });
+
+      // Log when server closes
+      server.on('close', () => {
+        console.log('⚠️  Server closed');
+      });
+    } catch (error) {
+      console.error('❌ Fatal error during initialization:', error.message);
+      process.exit(1);
+    }
   }
 });
 
@@ -537,6 +572,23 @@ app.post('/login', async (req, res) => {
   try {
     console.log(`🔐 Login attempt for username: ${username}`);
     
+    // Check if users table exists
+    const tableCheck = await pool.query(`
+      SELECT EXISTS (
+        SELECT 1 FROM information_schema.tables 
+        WHERE table_schema = 'public' 
+        AND table_name = 'users'
+      ) AS table_exists
+    `);
+    
+    if (!tableCheck.rows[0].table_exists) {
+      console.error('❌ Users table does not exist!');
+      return res.status(500).json({ 
+        message: 'Database not initialized - users table missing',
+        error: 'Users table does not exist'
+      });
+    }
+    
     const result = await pool.query('SELECT * FROM users WHERE username = $1', [username]);
 
     const user = result.rows[0];
@@ -564,9 +616,11 @@ app.post('/login', async (req, res) => {
   } catch (err) {
     console.error(`❌ Login error for ${username}:`, err.message);
     console.error('Error details:', err);
+    console.error('Error stack:', err.stack);
     res.status(500).json({ 
       message: 'Error logging in',
-      error: process.env.NODE_ENV === 'development' ? err.message : undefined 
+      error: err.message,
+      details: process.env.NODE_ENV === 'development' ? err.stack : undefined 
     });
   }
 });
@@ -5389,212 +5443,6 @@ app.post('/send-all-due-date-reminders', authenticateToken, async (req, res) => 
 });
 
 // Initialize database schema if needed
-async function initializeDatabase() {
-  try {
-    console.log('📋 Starting comprehensive database initialization...');
-
-    // Skip file-based migrations - they should be run manually via: railway run node run-migrations.js
-    // The following code ensures critical tables exist for the application to function
-
-    // ====================
-    // 1. CUSTOMERS TABLE
-    // ====================
-    const customerTableCheck = await pool.query(
-      `SELECT EXISTS (
-        SELECT FROM information_schema.tables 
-        WHERE table_schema = 'public' 
-        AND table_name = 'customers'
-      )`
-    );
-    
-    if (!customerTableCheck.rows[0].exists) {
-      console.log('📋 Creating missing customers table...');
-      
-      await pool.query(`
-        CREATE SEQUENCE IF NOT EXISTS customers_id_seq AS integer START WITH 1 INCREMENT BY 1;
-        
-        CREATE TABLE IF NOT EXISTS customers (
-          id integer NOT NULL DEFAULT nextval('customers_id_seq'),
-          first_name character varying(100) NOT NULL,
-          last_name character varying(100) NOT NULL,
-          email character varying(255),
-          home_phone character varying(20),
-          mobile_phone character varying(20),
-          birthdate date,
-          id_type character varying(50),
-          id_number character varying(100),
-          referral character varying(255),
-          identification_info text,
-          street_address character varying(255),
-          city character varying(128),
-          state character varying(64),
-          zipcode character varying(32),
-          customer_number character varying(50),
-          created_by_user_id integer,
-          created_by_username character varying(100),
-          updated_by_user_id integer,
-          updated_by_username character varying(100),
-          created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
-          updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
-          profile_image text,
-          PRIMARY KEY (id)
-        );
-        
-        CREATE INDEX IF NOT EXISTS idx_customers_email ON customers(email);
-        CREATE INDEX IF NOT EXISTS idx_customers_first_name ON customers(first_name);
-        CREATE INDEX IF NOT EXISTS idx_customers_home_phone ON customers(home_phone);
-        CREATE INDEX IF NOT EXISTS idx_customers_last_name ON customers(last_name);
-        CREATE INDEX IF NOT EXISTS idx_customers_mobile_phone ON customers(mobile_phone);
-      `);
-      
-      console.log('✅ Customers table created successfully');
-    }
-
-    // ====================
-    // 2. LOANS TABLE - Add Missing Columns
-    // ====================
-    const loansTableCheck = await pool.query(
-      `SELECT EXISTS (
-        SELECT FROM information_schema.tables 
-        WHERE table_schema = 'public' 
-        AND table_name = 'loans'
-      )`
-    );
-
-    if (loansTableCheck.rows[0].exists) {
-      console.log('📋 Checking loans table for missing columns...');
-      
-      // List of columns to ensure exist in loans table
-      const requiredColumns = [
-        { name: 'customer_id', definition: 'customer_id integer REFERENCES customers(id)' },
-        { name: 'recurring_fee', definition: 'recurring_fee DECIMAL(10, 2) DEFAULT 0.00' },
-        { name: 'redemption_fee', definition: 'redemption_fee DECIMAL(10, 2) DEFAULT 0.00' },
-        { name: 'collateral_image', definition: 'collateral_image text' }
-      ];
-
-      for (const col of requiredColumns) {
-        try {
-          const columnCheck = await pool.query(
-            `SELECT EXISTS (
-              SELECT FROM information_schema.columns 
-              WHERE table_schema = 'public' 
-              AND table_name = 'loans' 
-              AND column_name = $1
-            )`,
-            [col.name]
-          );
-
-          if (!columnCheck.rows[0].exists) {
-            console.log(`  📝 Adding column: ${col.name}`);
-            await pool.query(`ALTER TABLE loans ADD COLUMN ${col.definition}`);
-            console.log(`  ✅ Column added: ${col.name}`);
-          } else {
-            console.log(`  ✓ Column exists: ${col.name}`);
-          }
-        } catch (addColumnErr) {
-          console.warn(`  ⚠️  Could not add ${col.name} column:`, addColumnErr.message);
-        }
-      }
-    }
-
-    // ====================
-    // 3. USER_ROLES TABLE - Ensure Default Roles Exist
-    // ====================
-    try {
-      const roleCheckResult = await pool.query(
-        `SELECT COUNT(*) as count FROM user_roles`
-      );
-      
-      if (roleCheckResult.rows[0].count === 0) {
-        console.log('📋 Inserting default user roles...');
-        await pool.query(`
-          INSERT INTO user_roles (role_name) VALUES 
-          ('admin'),
-          ('staff'),
-          ('manager'),
-          ('user')
-          ON CONFLICT (role_name) DO NOTHING
-        `);
-        console.log('✅ Default user roles inserted');
-      } else {
-        console.log(`✓ User roles already exist (${roleCheckResult.rows[0].count} roles)`);
-      }
-    } catch (rolesErr) {
-      console.warn('⚠️  Could not ensure user roles:', rolesErr.message);
-    }
-
-    // ====================
-    // 4. Additional Tables - Check & Log Status
-    // ====================
-    const tablesToCheck = [
-      'payment_history',
-      'payments',
-      'redemption_history',
-      'forfeiture_history',
-      'shift_management',
-      'shifts',
-      'redeem_history'
-    ];
-
-    for (const tableName of tablesToCheck) {
-      try {
-        const tableCheck = await pool.query(
-          `SELECT EXISTS (
-            SELECT FROM information_schema.tables 
-            WHERE table_schema = 'public' 
-            AND table_name = $1
-          )`,
-          [tableName]
-        );
-
-        if (tableCheck.rows[0].exists) {
-          console.log(`✓ Table exists: ${tableName}`);
-        } else {
-          console.warn(`⚠️  Missing table: ${tableName}`);
-        }
-      } catch (err) {
-        console.warn(`⚠️  Error checking table ${tableName}:`, err.message);
-      }
-    }
-
-    console.log('✅ Database initialization complete');
-  } catch (err) {
-    console.warn('⚠️  Database initialization warning:', err.message);
-    // Don't exit - continue startup even if initialization fails
-  }
-}
-
-// Initialize database before starting server
-initializeDatabase().then(() => {
-  console.log('✅ Database initialized');
-  
-  // Run migrations before starting server
-  return runMigrations();
-}).then(() => {
-  // Start HTTP server
-  console.log('⚙️  Starting PawnFlow Server...');
-  console.log('🔌 Listening on port', PORT);
-
-  const server = app.listen(PORT, () => {
-    console.log(`🚀 Server is running on port ${PORT}`);
-    console.log('✅ Server started successfully');
-  });
-
-  // Handle server errors
-  server.on('error', (err) => {
-    console.error('❌ Server error:', err.message);
-    process.exit(1);
-  });
-
-  // Log when server closes
-  server.on('close', () => {
-    console.log('⚠️  Server closed');
-  });
-}).catch((err) => {
-  console.error('❌ Fatal error during initialization:', err);
-  process.exit(1);
-});
-
 // Function to run all migrations
 async function runMigrations() {
   const fs = require('fs');

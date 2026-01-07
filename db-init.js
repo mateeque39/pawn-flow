@@ -296,7 +296,9 @@ async function initializeDatabase(pool) {
     return true;
   } catch (error) {
     console.error('❌ Database initialization failed:', error.message);
-    console.error('Error details:', error.detail || error.code || '');
+    console.error('Error code:', error.code);
+    console.error('Error details:', error.detail);
+    console.error('Full error:', error);
     throw error;
   } finally {
     client.release();
