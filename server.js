@@ -3918,7 +3918,7 @@ app.get('/detailed-loans-breakdown', authenticateToken, async (req, res) => {
           ELSE 'active'
         END as loan_status_detail,
         CASE 
-          WHEN l.due_date < CURRENT_DATE THEN EXTRACT(DAY FROM CURRENT_DATE - l.due_date)
+          WHEN l.due_date < CURRENT_DATE THEN (CURRENT_DATE - l.due_date)::INTEGER
           ELSE 0
         END as days_overdue
       FROM loans l
