@@ -3362,6 +3362,52 @@ app.get('/customers/:customerId/loans/:loanId', async (req, res) => {
   }
 });
 
+// GET COLLATERAL IMAGE - GET /customers/:customerId/loans/:loanId/collateral-image
+app.get('/customers/:customerId/loans/:loanId/collateral-image', async (req, res) => {
+  const { customerId, loanId } = req.params;
+
+  try {
+    const customerIdNum = parseInt(customerId, 10);
+    const loanIdNum = parseInt(loanId, 10);
+
+    if (isNaN(customerIdNum) || isNaN(loanIdNum)) {
+      return res.status(400).json({ message: 'Invalid customer or loan ID' });
+    }
+
+    // Fetch the loan's collateral image
+    const result = await pool.query(
+      'SELECT collateral_image FROM loans WHERE id = $1 AND customer_id = $2',
+      [loanIdNum, customerIdNum]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: 'Loan not found' });
+    }
+
+    const collateralImage = result.rows[0].collateral_image;
+
+    if (!collateralImage) {
+      return res.status(404).json({ message: 'No collateral image found for this loan' });
+    }
+
+    // If it's already base64, return it directly
+    if (collateralImage.startsWith('data:')) {
+      return res.json({ image: collateralImage });
+    }
+
+    // If it's base64 without the data URL prefix, add it
+    if (!/^blob:|^http/.test(collateralImage)) {
+      return res.json({ image: `data:image/jpeg;base64,${collateralImage}` });
+    }
+
+    // Otherwise return as-is
+    res.json({ image: collateralImage });
+  } catch (err) {
+    console.error('Error fetching collateral image:', err);
+    res.status(500).json({ message: 'Error fetching collateral image' });
+  }
+});
+
 // ======================== END CUSTOMER-CENTRIC LOAN MANAGEMENT ========================
 
 // START SHIFT - User records opening cash balance
