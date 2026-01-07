@@ -51,6 +51,16 @@ const PORT = process.env.PORT || 5000;
 // Build database connection string
 // Support multiple ways to configure the database connection
 const getDatabaseUrl = () => {
+  // Log all DATABASE related environment variables for debugging
+  console.log('🔍 Checking environment variables:');
+  console.log('  DATABASE_URL:', process.env.DATABASE_URL ? '✅ Set' : '❌ Not set');
+  console.log('  PGHOST:', process.env.PGHOST ? '✅ Set' : '❌ Not set');
+  console.log('  PGUSER:', process.env.PGUSER ? '✅ Set' : '❌ Not set');
+  console.log('  PGPASSWORD:', process.env.PGPASSWORD ? '✅ Set' : '❌ Not set');
+  console.log('  PGPORT:', process.env.PGPORT ? '✅ Set' : '❌ Not set');
+  console.log('  PGDATABASE:', process.env.PGDATABASE ? '✅ Set' : '❌ Not set');
+  console.log('  NODE_ENV:', process.env.NODE_ENV || 'Not set (defaults to development)');
+  
   // First priority: explicit DATABASE_URL env var (Railway sets this)
   if (process.env.DATABASE_URL) {
     console.log('📍 Using DATABASE_URL from environment');
@@ -98,7 +108,10 @@ pool.on('connect', () => {
 pool.query('SELECT NOW()', async (err, res) => {
   if (err) {
     console.error('❌ Failed to connect to database:', err.message);
+    console.error('Error code:', err.code);
+    console.error('Error:', err);
     console.error('Database URL:', DATABASE_URL.replace(/:[^:@]+@/, ':****@'));
+    console.error('Attempted connection to:', DATABASE_URL.split('@')[1] || 'unknown');
     process.exit(1);
   } else {
     console.log('✅ Database connection test passed at:', res.rows[0].now);
