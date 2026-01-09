@@ -1994,6 +1994,170 @@ app.put('/loans/:transactionNumber/customer-info', async (req, res) => {
 // ======================== END CUSTOMER INFORMATION UPDATE ========================
 
 
+// ======================== LOAN DETAILS UPDATE ========================
+
+// UPDATE LOAN DETAILS - Update loan amount, interest rate, term, collateral, notes
+app.put('/loans/:loanId', async (req, res) => {
+  const { loanId } = req.params;
+  const {
+    loanAmount,
+    interestRate,
+    loanTerm,
+    collateralDescription,
+    customerNote,
+    updatedByUserId,
+    updatedByUsername
+  } = req.body;
+
+  try {
+    // Validate loanId
+    if (!loanId || isNaN(loanId)) {
+      return res.status(400).json({ message: 'Valid loan ID is required' });
+    }
+
+    // Fetch the loan
+    const loanResult = await pool.query('SELECT * FROM loans WHERE id = $1', [loanId]);
+    
+    if (loanResult.rows.length === 0) {
+      return res.status(404).json({ message: 'Loan not found' });
+    }
+
+    const loan = loanResult.rows[0];
+
+    // Validate required fields
+    if (loanAmount === undefined || loanAmount === null || loanAmount < 0) {
+      return res.status(400).json({ message: 'Valid loan amount is required' });
+    }
+
+    if (interestRate === undefined || interestRate === null || interestRate < 0) {
+      return res.status(400).json({ message: 'Valid interest rate is required' });
+    }
+
+    // Calculate new interest amount and total payable
+    const newLoanAmount = parseFloat(loanAmount);
+    const newInterestRate = parseFloat(interestRate);
+    const newInterestAmount = (newLoanAmount * newInterestRate) / 100;
+    const newTotalPayableAmount = newLoanAmount + newInterestAmount;
+
+    // Calculate new due date if loanTerm is provided
+    let newDueDate = loan.due_date;
+    if (loanTerm && !isNaN(loanTerm) && loanTerm > 0) {
+      const issuedDate = new Date(loan.loan_issued_date);
+      newDueDate = new Date(issuedDate.getTime() + parseInt(loanTerm) * 24 * 60 * 60 * 1000);
+      newDueDate = newDueDate.toISOString().split('T')[0];
+    }
+
+    const updateTime = new Date().toISOString();
+
+    // Build update query
+    const updateQuery = `
+      UPDATE loans 
+      SET loan_amount = $1,
+          interest_rate = $2,
+          interest_amount = $3,
+          total_payable_amount = $4,
+          remaining_balance = $5,
+          loan_term = $6,
+          due_date = $7,
+          collateral_description = $8,
+          customer_note = $9,
+          updated_at = $10,
+          updated_by_user_id = $11,
+          updated_by_username = $12
+      WHERE id = $13
+      RETURNING *
+    `;
+
+    const updatedLoanResult = await pool.query(updateQuery, [
+      newLoanAmount,
+      newInterestRate,
+      newInterestAmount,
+      newTotalPayableAmount,
+      newTotalPayableAmount, // remaining_balance set to total_payable_amount
+      loanTerm || loan.loan_term,
+      newDueDate,
+      collateralDescription !== undefined ? collateralDescription : loan.collateral_description,
+      customerNote !== undefined ? customerNote : loan.customer_note,
+      updateTime,
+      updatedByUserId || null,
+      updatedByUsername || null,
+      loanId
+    ]);
+
+    const updatedLoan = updatedLoanResult.rows[0];
+
+    // Create audit log entry
+    try {
+      const oldValues = {
+        loanAmount: loan.loan_amount,
+        interestRate: loan.interest_rate,
+        interestAmount: loan.interest_amount,
+        totalPayableAmount: loan.total_payable_amount,
+        loanTerm: loan.loan_term,
+        dueDate: loan.due_date,
+        collateralDescription: loan.collateral_description,
+        customerNote: loan.customer_note
+      };
+
+      const newValues = {
+        loanAmount: newLoanAmount,
+        interestRate: newInterestRate,
+        interestAmount: newInterestAmount,
+        totalPayableAmount: newTotalPayableAmount,
+        loanTerm: loanTerm || loan.loan_term,
+        dueDate: newDueDate,
+        collateralDescription: collateralDescription !== undefined ? collateralDescription : loan.collateral_description,
+        customerNote: customerNote !== undefined ? customerNote : loan.customer_note
+      };
+
+      await pool.query(
+        `INSERT INTO audit_log (action_type, user_id, username, loan_id, timestamp, old_values, new_values)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [
+          'UPDATE_LOAN_DETAILS',
+          updatedByUserId || null,
+          updatedByUsername || null,
+          loanId,
+          updateTime,
+          JSON.stringify(oldValues),
+          JSON.stringify(newValues)
+        ]
+      );
+    } catch (auditErr) {
+      console.warn('Failed to create audit log entry:', auditErr);
+    }
+
+    res.status(200).json({
+      message: 'Loan details updated successfully!',
+      loan: {
+        id: updatedLoan.id,
+        transactionNumber: updatedLoan.transaction_number,
+        loanAmount: updatedLoan.loan_amount,
+        interestRate: updatedLoan.interest_rate,
+        interestAmount: updatedLoan.interest_amount,
+        totalPayableAmount: updatedLoan.total_payable_amount,
+        remainingBalance: updatedLoan.remaining_balance,
+        loanTerm: updatedLoan.loan_term,
+        dueDate: updatedLoan.due_date,
+        collateralDescription: updatedLoan.collateral_description,
+        customerNote: updatedLoan.customer_note,
+        status: updatedLoan.status
+      },
+      updateMetadata: {
+        updatedAt: updateTime,
+        updatedByUserId: updatedByUserId,
+        updatedByUsername: updatedByUsername
+      }
+    });
+  } catch (err) {
+    console.error('Error updating loan details:', err);
+    res.status(500).json({ message: 'Error updating loan details', error: err.message });
+  }
+});
+
+// ======================== END LOAN DETAILS UPDATE ========================
+
+
 // ======================== CUSTOMER PROFILE MANAGEMENT ========================
 
 // CREATE CUSTOMER PROFILE - Create a new customer profile
