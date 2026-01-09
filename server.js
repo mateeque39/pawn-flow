@@ -3525,7 +3525,7 @@ app.post('/end-shift', async (req, res) => {
   const { userId, closingBalance, notes } = req.body;
 
   try {
-    if (!closingBalance || closingBalance < 0) {
+    if (closingBalance === null || closingBalance === undefined || closingBalance < 0) {
       return res.status(400).json({ message: 'Invalid closing balance' });
     }
 
