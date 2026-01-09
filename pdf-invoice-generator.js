@@ -104,7 +104,6 @@ async function generateLoanPDF(loan) {
     if (!itemDescription) {
       itemDescription = collateralItem;
     }
-    itemDescription = itemDescription.substring(0, 50);
     
     const interestAmount = parseFloat(loan.interest_amount || 0).toFixed(2);
     const recurringFee = parseFloat(loan.recurring_fee || 0).toFixed(2);
@@ -151,14 +150,19 @@ async function generateLoanPDF(loan) {
     doc.setFont(undefined, 'bold');
     doc.text('Collateral Item:', col1, y);
     doc.setFont(undefined, 'normal');
-    doc.text(collateralItem, col1 + labelWidth, y);
-    y += 5;
+    // Use splitTextToSize for multi-line collateral item
+    const maxWidth = pageWidth - col1 - labelWidth - margin;
+    const collateralLines = doc.splitTextToSize(collateralItem, maxWidth);
+    doc.text(collateralLines, col1 + labelWidth, y);
+    y += (collateralLines.length * 4) + 1;
 
     doc.setFont(undefined, 'bold');
     doc.text('Item Description:', col1, y);
     doc.setFont(undefined, 'normal');
-    doc.text(itemDescription, col1 + labelWidth, y);
-    y += 5;
+    // Use splitTextToSize for multi-line item description
+    const descriptionLines = doc.splitTextToSize(itemDescription, maxWidth);
+    doc.text(descriptionLines, col1 + labelWidth, y);
+    y += (descriptionLines.length * 4) + 1;
 
     doc.setFont(undefined, 'bold');
     doc.text('Loan Created:', col1, y);
