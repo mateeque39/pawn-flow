@@ -2824,7 +2824,7 @@ app.post('/customers/:customerId/loans', authenticateToken, requireActiveShift, 
 
       // Get all payments made in this shift (money coming IN to store)
       const paymentsInShiftResult = await pool.query(
-        `SELECT COALESCE(SUM(amount), 0) as total_payments_in 
+        `SELECT COALESCE(SUM(payment_amount), 0) as total_payments_in 
          FROM payment_history 
          WHERE created_by_user_id = $1 
          AND DATE(created_at) = DATE($2)`,
