@@ -2826,8 +2826,8 @@ app.post('/customers/:customerId/loans', authenticateToken, requireActiveShift, 
       const paymentsInShiftResult = await pool.query(
         `SELECT COALESCE(SUM(payment_amount), 0) as total_payments_in 
          FROM payment_history 
-         WHERE created_by_user_id = $1 
-         AND DATE(created_at) = DATE($2)`,
+         WHERE created_by = $1 
+         AND DATE(payment_date) = DATE($2)`,
         [createdByUserId || userId, new Date()]
       );
       const paymentsIn = parseFloat(paymentsInShiftResult.rows[0]?.total_payments_in || 0);
