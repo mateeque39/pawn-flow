@@ -4342,26 +4342,27 @@ app.post('/shift/add-cash', async (req, res) => {
     const shift = shiftResult.rows[0];
     const cashAddedAmount = parseFloat(amount);
 
-    // Update the opening balance to reflect additional cash
-    // We track this by updating the shift's opening_balance plus the added amount
-    const updatedOpeningBalance = parseFloat(shift.opening_balance) + cashAddedAmount;
+    // Track additional cash separately from opening balance
+    // Opening Balance stays fixed; cash added is tracked separately
+    const updatedCashAdded = parseFloat(shift.cash_added || 0) + cashAddedAmount;
 
     const updateResult = await pool.query(
       `UPDATE shift_management 
-       SET opening_balance = $1,
+       SET cash_added = $1,
            notes = CASE WHEN notes IS NULL OR notes = '' 
                    THEN $2
                    ELSE notes || '\n' || $2 END
        WHERE id = $3
        RETURNING *`,
-      [updatedOpeningBalance, `[CASH ADDED] $${cashAddedAmount} added - ${notes || 'Bank withdrawal'}`, shift.id]
+      [updatedCashAdded, `[CASH ADDED] $${cashAddedAmount} added - ${notes || 'Bank withdrawal'}`, shift.id]
     );
 
     res.status(200).json({
       message: 'Cash added to shift successfully!',
       shift: updateResult.rows[0],
       amountAdded: cashAddedAmount,
-      newOpeningBalance: updatedOpeningBalance
+      totalCashAdded: updatedCashAdded,
+      openingBalance: shift.opening_balance
     });
   } catch (err) {
     console.error('Error adding cash to shift:', err);

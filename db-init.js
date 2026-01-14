@@ -177,6 +177,7 @@ CREATE TABLE IF NOT EXISTS shift_management (
     shift_start_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     shift_end_time TIMESTAMP,
     opening_balance NUMERIC(12,2) NOT NULL,
+    cash_added NUMERIC(12,2) DEFAULT 0,
     closing_balance NUMERIC(12,2),
     total_payments_received NUMERIC(12,2) DEFAULT 0,
     total_loans_given NUMERIC(12,2) DEFAULT 0,
