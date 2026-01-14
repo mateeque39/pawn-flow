@@ -224,6 +224,9 @@ CREATE INDEX IF NOT EXISTS idx_shift_user_id ON shift_management(user_id);
 CREATE INDEX IF NOT EXISTS idx_shifts_user_id ON shifts(user_id);
 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
 
+-- Add missing columns to existing tables (for schema migrations)
+ALTER TABLE shift_management ADD COLUMN IF NOT EXISTS cash_added NUMERIC(12,2) DEFAULT 0;
+
 -- Add comments to loans table columns for documentation
 COMMENT ON COLUMN loans.first_name IS 'Customer first name (migrated from customer_name or entered directly)';
 COMMENT ON COLUMN loans.last_name IS 'Customer last name (migrated from customer_name or entered directly)';
