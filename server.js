@@ -4370,6 +4370,70 @@ app.post('/shift/add-cash', async (req, res) => {
   }
 });
 
+// GET STORE BALANCE - Get current store cash balance
+app.get('/store-balance', authenticateToken, async (req, res) => {
+  try {
+    // Get today's date
+    const today = new Date().toISOString().split('T')[0];
+
+    // Get all shifts for today and their opening balances + cash added
+    const shiftsResult = await pool.query(
+      `SELECT opening_balance, cash_added
+      FROM shift_management
+      WHERE DATE(shift_start_time) = $1`,
+      [today]
+    );
+
+    // Calculate total added cash today
+    let totalAdded = 0;
+    if (shiftsResult.rows.length > 0) {
+      totalAdded = shiftsResult.rows.reduce((sum, row) => {
+        return sum + (parseFloat(row.opening_balance) || 0) + (parseFloat(row.cash_added) || 0);
+      }, 0);
+    }
+
+    // Get all cash outflows today (payments, redemptions, etc.)
+    const paymentsResult = await pool.query(
+      `SELECT COALESCE(SUM(amount_paid), 0) as total_paid
+      FROM loan_payments
+      WHERE DATE(payment_date) = $1`,
+      [today]
+    );
+
+    const totalPaid = parseFloat(paymentsResult.rows[0]?.total_paid || 0);
+
+    // Get the last closed shift balance
+    const lastShiftResult = await pool.query(
+      `SELECT closing_balance 
+      FROM shift_management
+      WHERE shift_end_time IS NOT NULL
+      ORDER BY shift_end_time DESC
+      LIMIT 1`
+    );
+
+    const lastClosingBalance = lastShiftResult.rows.length > 0 
+      ? parseFloat(lastShiftResult.rows[0].closing_balance) 
+      : 0;
+
+    // Calculate estimated current balance
+    const estimatedBalance = parseFloat((lastClosingBalance + totalAdded - totalPaid).toFixed(2));
+
+    res.json({
+      estimatedBalance,
+      totalAddedToday: parseFloat(totalAdded.toFixed(2)),
+      totalPaidOut: parseFloat(totalPaid.toFixed(2)),
+      lastClosingBalance: parseFloat(lastClosingBalance.toFixed(2)),
+      date: today
+    });
+  } catch (err) {
+    console.error('Error getting store balance:', err);
+    res.status(500).json({ 
+      message: 'Error getting store balance', 
+      error: err.message 
+    });
+  }
+});
+
 // ======================== END SHIFT MANAGEMENT ========================
 
 // ======================== CASH REPORT ========================
