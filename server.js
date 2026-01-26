@@ -4375,48 +4375,71 @@ app.get('/store-balance', authenticateToken, async (req, res) => {
   try {
     // Get today's date
     const today = new Date().toISOString().split('T')[0];
+    console.log('📊 Fetching store balance for date:', today);
 
     // Get all shifts for today and their opening balances + cash added
-    const shiftsResult = await pool.query(
-      `SELECT opening_balance, cash_added
-      FROM shift_management
-      WHERE DATE(shift_start_time) = $1`,
-      [today]
-    );
-
-    // Calculate total added cash today
     let totalAdded = 0;
-    if (shiftsResult.rows.length > 0) {
-      totalAdded = shiftsResult.rows.reduce((sum, row) => {
-        return sum + (parseFloat(row.opening_balance) || 0) + (parseFloat(row.cash_added) || 0);
-      }, 0);
+    try {
+      const shiftsResult = await pool.query(
+        `SELECT opening_balance, COALESCE(cash_added, 0) as cash_added
+        FROM shift_management
+        WHERE DATE(shift_start_time) = $1`,
+        [today]
+      );
+      console.log('✅ Shifts result:', shiftsResult.rows.length, 'shifts found');
+
+      // Calculate total added cash today
+      if (shiftsResult.rows && shiftsResult.rows.length > 0) {
+        totalAdded = shiftsResult.rows.reduce((sum, row) => {
+          const opening = parseFloat(row.opening_balance) || 0;
+          const cashAdded = parseFloat(row.cash_added) || 0;
+          return sum + opening + cashAdded;
+        }, 0);
+      }
+    } catch (queryErr) {
+      console.warn('⚠️ Error getting shifts:', queryErr.message);
+      totalAdded = 0;
     }
 
     // Get all cash outflows today (payments, redemptions, etc.)
-    const paymentsResult = await pool.query(
-      `SELECT COALESCE(SUM(amount_paid), 0) as total_paid
-      FROM loan_payments
-      WHERE DATE(payment_date) = $1`,
-      [today]
-    );
-
-    const totalPaid = parseFloat(paymentsResult.rows[0]?.total_paid || 0);
+    let totalPaid = 0;
+    try {
+      const paymentsResult = await pool.query(
+        `SELECT COALESCE(SUM(amount_paid), 0) as total_paid
+        FROM loan_payments
+        WHERE DATE(payment_date) = $1`,
+        [today]
+      );
+      console.log('✅ Payments result:', paymentsResult.rows[0]);
+      totalPaid = parseFloat(paymentsResult.rows[0]?.total_paid || 0);
+    } catch (queryErr) {
+      console.warn('⚠️ Error getting payments:', queryErr.message);
+      totalPaid = 0;
+    }
 
     // Get the last closed shift balance
-    const lastShiftResult = await pool.query(
-      `SELECT closing_balance 
-      FROM shift_management
-      WHERE shift_end_time IS NOT NULL
-      ORDER BY shift_end_time DESC
-      LIMIT 1`
-    );
-
-    const lastClosingBalance = lastShiftResult.rows.length > 0 
-      ? parseFloat(lastShiftResult.rows[0].closing_balance) 
-      : 0;
+    let lastClosingBalance = 0;
+    try {
+      const lastShiftResult = await pool.query(
+        `SELECT closing_balance 
+        FROM shift_management
+        WHERE shift_end_time IS NOT NULL
+        ORDER BY shift_end_time DESC
+        LIMIT 1`
+      );
+      console.log('✅ Last shift result:', lastShiftResult.rows.length > 0 ? 'found' : 'not found');
+      lastClosingBalance = lastShiftResult.rows.length > 0 
+        ? parseFloat(lastShiftResult.rows[0].closing_balance) || 0
+        : 0;
+    } catch (queryErr) {
+      console.warn('⚠️ Error getting last shift:', queryErr.message);
+      lastClosingBalance = 0;
+    }
 
     // Calculate estimated current balance
     const estimatedBalance = parseFloat((lastClosingBalance + totalAdded - totalPaid).toFixed(2));
+
+    console.log('📈 Balance calculated:', { estimatedBalance, totalAdded, totalPaid, lastClosingBalance });
 
     res.json({
       estimatedBalance,
@@ -4426,7 +4449,7 @@ app.get('/store-balance', authenticateToken, async (req, res) => {
       date: today
     });
   } catch (err) {
-    console.error('Error getting store balance:', err);
+    console.error('❌ Error getting store balance:', err);
     res.status(500).json({ 
       message: 'Error getting store balance', 
       error: err.message 
