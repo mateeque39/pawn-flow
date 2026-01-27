@@ -4378,6 +4378,65 @@ app.post('/shift/add-cash', async (req, res) => {
   }
 });
 
+// REMOVE/ADJUST CASH FROM SHIFT - Remove or adjust cash previously added to shift
+app.post('/shift/remove-cash', async (req, res) => {
+  const { userId, amount, notes } = req.body;
+
+  try {
+    if (!userId || !amount || amount <= 0) {
+      return res.status(400).json({ message: 'User ID and positive amount are required' });
+    }
+
+    // Get active shift
+    const shiftResult = await pool.query(
+      'SELECT * FROM shift_management WHERE user_id = $1 AND shift_end_time IS NULL ORDER BY id DESC LIMIT 1',
+      [userId]
+    );
+
+    if (shiftResult.rows.length === 0) {
+      return res.status(404).json({ message: 'No active shift found' });
+    }
+
+    const shift = shiftResult.rows[0];
+    const currentCashAdded = parseFloat(shift.cash_added || 0);
+    const cashRemovedAmount = parseFloat(amount);
+
+    // Ensure we don't remove more than what was added
+    if (cashRemovedAmount > currentCashAdded) {
+      return res.status(400).json({
+        message: `Cannot remove $${cashRemovedAmount.toFixed(2)}. Only $${currentCashAdded.toFixed(2)} has been added.`,
+        currentCashAdded: currentCashAdded,
+        attemptedRemoval: cashRemovedAmount
+      });
+    }
+
+    // Update cash_added
+    const updatedCashAdded = currentCashAdded - cashRemovedAmount;
+
+    const updateResult = await pool.query(
+      `UPDATE shift_management 
+       SET cash_added = $1,
+           notes = CASE WHEN notes IS NULL OR notes = '' 
+                   THEN $2
+                   ELSE notes || '\n' || $2 END
+       WHERE id = $3
+       RETURNING *`,
+      [updatedCashAdded, `[CASH REMOVED] $${cashRemovedAmount} removed - ${notes || 'Correction'}`, shift.id]
+    );
+
+    res.status(200).json({
+      message: 'Cash removed from shift successfully!',
+      shift: updateResult.rows[0],
+      amountRemoved: cashRemovedAmount,
+      totalCashAdded: updatedCashAdded,
+      openingBalance: shift.opening_balance
+    });
+  } catch (err) {
+    console.error('Error removing cash from shift:', err);
+    res.status(500).json({ message: 'Error removing cash from shift', error: err.message });
+  }
+});
+
 // GET STORE BALANCE - Get current store cash balance
 app.get('/store-balance', authenticateToken, async (req, res) => {
   try {
