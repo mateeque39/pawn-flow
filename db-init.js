@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS loans (
     customer_name VARCHAR(100) NOT NULL,
     customer_number VARCHAR(50),
     loan_amount NUMERIC NOT NULL,
+    initial_loan_amount NUMERIC NOT NULL,
     interest_rate NUMERIC NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,

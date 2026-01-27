@@ -909,6 +909,7 @@ app.post('/add-money', async (req, res) => {
     const totalPaid = paymentsResult.rows[0].total_paid || 0;
 
     // Update loan amount, recalculate interest, and total payable amount
+    // NOTE: initial_loan_amount stays the same to prevent affecting cash balance checks
     const newLoanAmount = parseFloat(loan.loan_amount) + parseFloat(amount);
     const newInterestAmount = (newLoanAmount * parseFloat(loan.interest_rate)) / 100;
     const newTotalPayableAmount = newLoanAmount + newInterestAmount;
@@ -1195,12 +1196,12 @@ app.post('/create-loan', authenticateToken, requireActiveShift, async (req, res)
       `INSERT INTO loans (
         customer_id, first_name, last_name, email, home_phone, mobile_phone, birthdate,
         id_type, id_number, referral, identification_info, street_address, city, state, zipcode,
-        customer_number, loan_amount, interest_rate, interest_amount, total_payable_amount, recurring_fee,
+        customer_number, loan_amount, initial_loan_amount, interest_rate, interest_amount, total_payable_amount, recurring_fee,
         item_category, item_description, collateral_description, customer_note, collateral_image, transaction_number,
         loan_issued_date, loan_term, due_date,
         status, remaining_balance, created_by, created_by_user_id, created_by_username, customer_name
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37)
       RETURNING *`,
       [
         customerId,
@@ -1219,6 +1220,7 @@ app.post('/create-loan', authenticateToken, requireActiveShift, async (req, res)
         state || null,
         zipcode || null,
         customer_number || null,
+        totalLoanAmount,
         totalLoanAmount,
         interestRate,
         calculatedInterestAmount,
@@ -2813,8 +2815,9 @@ app.post('/customers/:customerId/loans', authenticateToken, requireActiveShift, 
       const openingBalance = parseFloat(shift.opening_balance) || 0;
       
       // Get all loans created in this shift (money gone OUT of store)
+      // NOTE: Use initial_loan_amount instead of loan_amount to exclude added money
       const loansInShiftResult = await pool.query(
-        `SELECT COALESCE(SUM(loan_amount), 0) as total_loans_out 
+        `SELECT COALESCE(SUM(initial_loan_amount), 0) as total_loans_out 
          FROM loans 
          WHERE created_by_user_id = $1 
          AND DATE(created_at) = DATE($2)`,
@@ -2866,12 +2869,12 @@ app.post('/customers/:customerId/loans', authenticateToken, requireActiveShift, 
       `INSERT INTO loans (
         customer_id, first_name, last_name, email, home_phone, mobile_phone, birthdate,
         id_type, id_number, referral, identification_info, street_address, city, state, zipcode,
-        customer_number, loan_amount, interest_rate, interest_amount, total_payable_amount, recurring_fee,
+        customer_number, loan_amount, initial_loan_amount, interest_rate, interest_amount, total_payable_amount, recurring_fee,
         item_category, item_description, collateral_description, customer_note, collateral_image, transaction_number,
         loan_issued_date, loan_term, due_date,
         status, remaining_balance, created_by, created_by_user_id, created_by_username, customer_name
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37)
       RETURNING *`,
       [
         customerIdNum,
@@ -2890,6 +2893,7 @@ app.post('/customers/:customerId/loans', authenticateToken, requireActiveShift, 
         state || null,
         zipcode || null,
         customer_number || null,
+        totalLoanAmount,
         totalLoanAmount,
         interestRate,
         calculatedInterestAmount,

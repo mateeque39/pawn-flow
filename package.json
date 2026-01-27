@@ -5,6 +5,9 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
+    "migrate": "node run-migrations.js",
+    "deploy": "npm run migrate && node server.js",
+    "verify": "node verify-migration.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
