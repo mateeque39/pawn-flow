@@ -2813,6 +2813,8 @@ app.post('/customers/:customerId/loans', authenticateToken, requireActiveShift, 
     if (currentShiftResult.rows.length > 0) {
       const shift = currentShiftResult.rows[0];
       const openingBalance = parseFloat(shift.opening_balance) || 0;
+      const cashAdded = parseFloat(shift.cash_added) || 0;
+      const totalAvailableCash = openingBalance + cashAdded;
       
       // Get all loans created in this shift (money gone OUT of store)
       // NOTE: Use initial_loan_amount instead of loan_amount to exclude added money
@@ -2835,11 +2837,13 @@ app.post('/customers/:customerId/loans', authenticateToken, requireActiveShift, 
       );
       const paymentsIn = parseFloat(paymentsInShiftResult.rows[0]?.total_payments_in || 0);
 
-      // Calculate available balance
-      const currentBalance = openingBalance + paymentsIn - loansOut;
+      // Calculate available balance (opening + cash added + payments - loans out)
+      const currentBalance = totalAvailableCash + paymentsIn - loansOut;
       
       console.log('💰 Store Balance Check:');
       console.log('   Opening Balance:', openingBalance);
+      console.log('   Cash Added:', cashAdded);
+      console.log('   Total Available Cash:', totalAvailableCash);
       console.log('   Payments In Today:', paymentsIn);
       console.log('   Loans Out Today:', loansOut);
       console.log('   Current Available Balance:', currentBalance);
