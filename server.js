@@ -5833,6 +5833,8 @@ async function runMigrations() {
   const path = require('path');
   
   try {
+    console.log('🔄 Running automatic migrations on startup...\n');
+    
     const migrationsDir = path.join(__dirname, 'migrations');
     
     if (!fs.existsSync(migrationsDir)) {
@@ -5840,13 +5842,52 @@ async function runMigrations() {
       return;
     }
     
-    const files = fs.readdirSync(migrationsDir)
+    // Create migrations tracking table if it doesn't exist
+    try {
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS migrations (
+          id SERIAL PRIMARY KEY,
+          name VARCHAR(255) NOT NULL UNIQUE,
+          executed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+    } catch (err) {
+      console.warn('⚠️  Could not create migrations table:', err.message);
+    }
+    
+    // Get all migration files (both SQL and JS)
+    const sqlFiles = fs.readdirSync(migrationsDir)
       .filter(f => f.endsWith('.sql'))
       .sort();
+    
+    const jsFiles = fs.readdirSync(migrationsDir)
+      .filter(f => f.endsWith('.js'))
+      .sort();
 
-    console.log(`📁 Found ${files.length} migration files`);
+    const allFiles = [...sqlFiles, ...jsFiles];
+    console.log(`📁 Found ${allFiles.length} migration files (${sqlFiles.length} SQL, ${jsFiles.length} JS)\n`);
 
-    for (const file of files) {
+    if (allFiles.length === 0) {
+      console.log('✨ No migrations to run');
+      return;
+    }
+
+    // Get list of already executed migrations
+    let executedMigrations = new Set();
+    try {
+      const result = await pool.query('SELECT name FROM migrations;');
+      executedMigrations = new Set(result.rows.map(r => r.name));
+    } catch (err) {
+      console.warn('⚠️  Could not query migrations table:', err.message);
+    }
+
+    // Run SQL migrations
+    for (const file of sqlFiles) {
+      if (executedMigrations.has(file)) {
+        console.log(`⏭️  Skipping ${file} (already executed)`);
+        continue;
+      }
+
       const filePath = path.join(migrationsDir, file);
       const sql = fs.readFileSync(filePath, 'utf8');
       
@@ -5854,17 +5895,50 @@ async function runMigrations() {
       
       try {
         await pool.query(sql);
-        console.log(`✅ Completed: ${file}`);
+        // Record migration as executed
+        await pool.query(
+          'INSERT INTO migrations (name) VALUES ($1) ON CONFLICT (name) DO NOTHING',
+          [file]
+        );
+        console.log(`✅ Completed: ${file}\n`);
       } catch (err) {
         if (err.message.includes('already exists') || err.message.includes('duplicate key')) {
-          console.log(`⚠️  ${file} (already applied): ${err.message.substring(0, 50)}`);
+          console.log(`⚠️  ${file} (already applied): ${err.message.substring(0, 50)}\n`);
         } else {
-          console.warn(`⚠️  Error in ${file}: ${err.message}`);
+          console.warn(`⚠️  Error in ${file}: ${err.message}\n`);
         }
       }
     }
+
+    // Run JavaScript migrations
+    for (const file of jsFiles) {
+      if (executedMigrations.has(file)) {
+        console.log(`⏭️  Skipping ${file} (already executed)`);
+        continue;
+      }
+
+      const filePath = path.join(migrationsDir, file);
+      console.log(`⏳ Running: ${file}`);
+      
+      try {
+        const migration = require(filePath);
+        
+        if (typeof migration.runMigration === 'function') {
+          await migration.runMigration();
+        }
+        
+        // Record migration as executed
+        await pool.query(
+          'INSERT INTO migrations (name) VALUES ($1) ON CONFLICT (name) DO NOTHING',
+          [file]
+        );
+        console.log(`✅ Completed: ${file}\n`);
+      } catch (err) {
+        console.warn(`⚠️  Error in ${file}: ${err.message}\n`);
+      }
+    }
     
-    console.log('✨ Migrations completed!');
+    console.log('✨ All migrations completed!');
   } catch (err) {
     console.error('❌ Migration error:', err);
     throw err;
