@@ -144,6 +144,19 @@ CREATE TABLE IF NOT EXISTS payments (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- Create loan_payments table (for daily balance calculations)
+CREATE TABLE IF NOT EXISTS loan_payments (
+    id SERIAL PRIMARY KEY,
+    loan_id INTEGER NOT NULL REFERENCES loans(id) ON DELETE CASCADE,
+    amount_paid NUMERIC(14,2) NOT NULL,
+    payment_date TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    payment_method VARCHAR(64),
+    processed_by_user_id INTEGER,
+    processed_by_username VARCHAR(128),
+    note TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
 -- Create forfeiture_history table
 CREATE TABLE IF NOT EXISTS forfeiture_history (
     id SERIAL PRIMARY KEY,
@@ -219,6 +232,8 @@ CREATE INDEX IF NOT EXISTS idx_loans_mobile_phone ON loans(mobile_phone);
 CREATE INDEX IF NOT EXISTS idx_loans_transaction_number ON loans(transaction_number);
 CREATE INDEX IF NOT EXISTS idx_payment_created_by ON payment_history(created_by);
 CREATE INDEX IF NOT EXISTS idx_payment_history_loan_id ON payment_history(loan_id);
+CREATE INDEX IF NOT EXISTS idx_loan_payments_date ON loan_payments(payment_date);
+CREATE INDEX IF NOT EXISTS idx_loan_payments_loan_id ON loan_payments(loan_id);
 CREATE INDEX IF NOT EXISTS idx_shift_active ON shift_management(user_id, shift_end_time);
 CREATE INDEX IF NOT EXISTS idx_shift_date ON shift_management(shift_start_time);
 CREATE INDEX IF NOT EXISTS idx_shift_user_id ON shift_management(user_id);
